@@ -1,13 +1,14 @@
 # DOCX Comparison Engine
 
-A web application that compares DOCX documents and shows changes using tracked changes, built with [SuperDoc](https://superdoc.dev).
+A web application that compares two versions of a DOCX document and displays the differences using tracked changes, built with [SuperDoc](https://superdoc.dev).
 
 ## Features
 
-- **Upload & Compare**: Upload two versions of a DOCX document and see the differences
-- **Tracked Changes**: Changes are displayed using native tracked changes format (insertions, deletions, formatting)
-- **Change Summary**: Get a summary of all changes detected between versions
-- **Real-time Processing**: Documents are processed in the browser for fast comparison
+- **Upload & Compare**: Upload an original DOCX document, then upload a new version to see differences
+- **Track Changes**: Changes are displayed using SuperDoc's native tracked changes (insertions, deletions)
+- **Accept/Reject**: Review individual changes and accept or reject them
+- **Change Summary**: Get a summary of all changes with counts and highlights
+- **Preserved Formatting**: Original document structure and formatting are maintained
 
 ## Tech Stack
 
@@ -22,7 +23,7 @@ A web application that compares DOCX documents and shows changes using tracked c
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - npm
 
 ### Installation
@@ -41,51 +42,83 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ```bash
 npm run build
-npm run start
+npm start
 ```
 
 ## Architecture
 
-The application follows a modular architecture with clear separation of concerns:
-
 ```
 src/
-├── app/                    # Next.js App Router pages
-├── components/             # React components
-│   ├── upload/            # File upload components
-│   ├── editor/            # Document viewer components
-│   ├── results/           # Change display components
-│   └── layout/            # Layout components
+├── app/                    # Next.js App Router
+│   └── page.tsx           # Main page with comparison logic
+├── components/
+│   ├── layout/            # Header component
+│   ├── results/           # ChangeSummary, ChangesSidebar
+│   └── upload/            # DocxUploader
 ├── lib/
-│   ├── types/             # TypeScript type definitions
-│   ├── adapters/          # SuperDoc integration adapters
-│   ├── core/              # Pure diff logic (no SuperDoc dependency)
-│   └── engine/            # Comparison orchestration
-├── hooks/                  # React hooks
-└── store/                  # Zustand state management
+│   ├── services/          # Core comparison services
+│   │   ├── documentParser.ts      # DOCX → ProseMirror JSON
+│   │   ├── documentDiffer.ts      # Character-level diffing
+│   │   ├── mergeDocuments.ts      # Applies track changes
+│   │   └── trackChangeInjector.ts # Creates track marks
+│   └── types/             # TypeScript definitions
+└── store/                 # Zustand state management
 ```
-
-### Key Design Decisions
-
-1. **Abstraction Layer**: The `DocumentModel` and `ChangeSet` types abstract SuperDoc internals, making the core diff logic testable and maintainable.
-
-2. **Paragraph-Based Diffing**: Documents are compared at the paragraph level first (using LCS alignment), then text within matched paragraphs is compared character-by-character.
-
-3. **Format Change Detection**: Formatting changes (bold, italic, etc.) are detected by comparing marks on unchanged text regions.
-
-4. **Suggesting Mode**: Changes are applied to SuperDoc in "suggesting" mode, which automatically creates tracked changes.
 
 ## How It Works
 
-1. **Upload V1**: User uploads the original document, which is displayed in the editor
-2. **Upload V2**: User uploads the new version
-3. **Comparison**:
-   - Both documents are converted to `DocumentModel` format
-   - Paragraphs are aligned using LCS algorithm
-   - Text changes (insertions/deletions) are detected using diff-match-patch
-   - Format changes are detected by comparing marks on equal text
-4. **Display**: Changes are applied to the editor in suggesting mode, showing tracked changes
+The application uses a **"Merge and Mark"** approach:
+
+1. **Parse Documents**: Both DOCX files are loaded into hidden SuperDoc editors and converted to ProseMirror JSON
+
+2. **Character-Level Diff**: Full text is extracted and compared using diff-match-patch, producing segments of `equal`, `insert`, and `delete` operations
+
+3. **Merge with Track Changes**: The original document structure is preserved while injecting `trackInsert` and `trackDelete` marks at the appropriate positions
+
+4. **Display**: The merged document is loaded into SuperDoc in "review" mode, showing:
+   - Deletions: Red strikethrough
+   - Insertions: Green underline
+
+5. **Review**: Users can accept or reject individual changes via the sidebar
+
+## Key Implementation Details
+
+### SuperDoc Configuration
+
+```typescript
+new SuperDoc({
+  documentMode: 'editing',  // Enables accept/reject
+  role: 'editor',          // Permission to modify
+  permissionResolver: () => true,  // Allow all operations
+});
+
+// Enable visual track changes
+superdoc.setTrackedChangesPreferences({
+  mode: 'review',  // Shows both insertions and deletions
+  enabled: true
+});
+```
+
+### Track Change Marks
+
+```typescript
+// Insertion mark
+{
+  type: 'trackInsert',
+  attrs: { id, author, authorEmail, date }
+}
+
+// Deletion mark
+{
+  type: 'trackDelete',
+  attrs: { id, author, authorEmail, date }
+}
+```
+
+## Documentation
+
+See `PLANS/final-approach.md` for a detailed technical guide that can be used to rebuild this solution in other projects.
 
 ## License
 
-This project was created as a take-home assignment.
+This project was created as a take-home assignment for SuperDoc.
