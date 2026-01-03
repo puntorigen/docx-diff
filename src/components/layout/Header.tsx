@@ -8,12 +8,16 @@
 interface HeaderProps {
   onUploadNewVersion?: () => void;
   showUploadButton?: boolean;
+  onDownload?: () => void;
+  showDownloadButton?: boolean;
   onReset?: () => void;
 }
 
 export function Header({
   onUploadNewVersion,
   showUploadButton = false,
+  onDownload,
+  showDownloadButton = false,
   onReset,
 }: HeaderProps) {
   return (
@@ -33,6 +37,28 @@ export function Header({
 
         {/* Actions */}
         <div className="flex items-center gap-3">
+          {showDownloadButton && onDownload && (
+            <button
+              onClick={onDownload}
+              className="inline-flex items-center px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-colors"
+            >
+              <svg
+                className="w-4 h-4 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                />
+              </svg>
+              Download DOCX
+            </button>
+          )}
+
           {showUploadButton && onUploadNewVersion && (
             <button
               onClick={onUploadNewVersion}

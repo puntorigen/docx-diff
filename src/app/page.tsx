@@ -11,7 +11,6 @@ import {
   Header,
   DocxUploader,
   ChangeSummary,
-  ChangesSidebar,
 } from '@/components';
 import {
   parseDocx,
@@ -38,10 +37,12 @@ interface ComparisonState {
 function MergedDocumentViewer({
   file,
   mergedJson,
+  onSuperdocReady,
   className = '',
 }: {
   file: File;
   mergedJson: ProseMirrorJSON | null;
+  onSuperdocReady?: (superdoc: SuperDocInstance) => void;
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -186,6 +187,11 @@ function MergedDocumentViewer({
           }
 
           setIsLoading(false);
+          
+          // Notify parent that superdoc is ready
+          if (onSuperdocReady) {
+            onSuperdocReady(sd);
+          }
         },
         onException: ({ error: err }: { error: Error }) => {
           console.error('SuperDoc error:', err);
@@ -202,7 +208,7 @@ function MergedDocumentViewer({
     }
 
     initRef.current = false;
-  }, [file, mergedJson]);
+  }, [file, mergedJson, onSuperdocReady]);
 
   // Effect to initialize
   useEffect(() => {
@@ -412,6 +418,31 @@ export default function Home() {
     diffResult: null,
   });
 
+  // Ref to store the active SuperDoc instance for download
+  const activeSuperdocRef = useRef<SuperDocInstance | null>(null);
+
+  /**
+   * Handle download of current document as DOCX
+   */
+  const handleDownload = useCallback(async () => {
+    if (!activeSuperdocRef.current) {
+      console.warn('No active SuperDoc instance');
+      return;
+    }
+
+    try {
+      await activeSuperdocRef.current.export({
+        exportType: ['docx'],
+        exportedName: v1File?.name?.replace('.docx', '-compared') || 'document-compared',
+        triggerDownload: true,
+        commentsType: 'external',
+      });
+    } catch (err) {
+      console.error('Failed to export document:', err);
+      setError('Failed to download document');
+    }
+  }, [v1File, setError]);
+
   /**
    * Handle V1 file upload
    */
@@ -532,6 +563,8 @@ export default function Home() {
       <Header
         showUploadButton={stage === 'viewing' || stage === 'result'}
         onUploadNewVersion={() => setShowUploadModal(true)}
+        showDownloadButton={stage === 'result'}
+        onDownload={handleDownload}
         onReset={stage !== 'upload' ? handleReset : undefined}
       />
 
@@ -581,6 +614,7 @@ export default function Home() {
                 key={`merged-${v1File.name}`}
                 file={v1File}
                 mergedJson={comparison.mergedJson}
+                onSuperdocReady={(sd) => { activeSuperdocRef.current = sd; }}
                 className="flex-1"
               />
 
@@ -592,13 +626,6 @@ export default function Home() {
               )}
             </div>
 
-            {/* Sidebar (right) */}
-            {changeSet && (
-              <ChangesSidebar
-                changeSet={changeSet}
-                className="w-80 flex-shrink-0"
-              />
-            )}
           </div>
         )}
 
