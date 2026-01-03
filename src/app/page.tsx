@@ -99,6 +99,28 @@ function MergedDocumentViewer({
           name: 'Comparison Viewer',
           email: 'viewer@comparison.local',
         },
+        // Allow accepting/rejecting changes from any author (including our 'Comparison Tool')
+        permissionResolver: ({ permission, defaultDecision }: { permission: string; defaultDecision: boolean }) => {
+          // Allow all track change operations
+          if (permission === 'RESOLVE_OTHER' || 
+              permission === 'accept-change' || 
+              permission === 'reject-change') {
+            return true;
+          }
+          return defaultDecision;
+        },
+        // Monitor track changes for debugging
+        onTrackedChangesUpdate: ({ editor }: { editor: any }) => {
+          try {
+            const changes = editor?.storage?.trackChanges?.all?.();
+            console.log('Track changes storage:', changes?.length || 0, 'changes');
+            if (changes && changes.length > 0) {
+              console.log('First change:', changes[0]);
+            }
+          } catch (e) {
+            console.log('Could not read track changes storage');
+          }
+        },
         onReady: ({ superdoc: sd }: { superdoc: SuperDocInstance }) => {
           superdocRef.current = sd;
 
@@ -118,7 +140,7 @@ function MergedDocumentViewer({
               } else {
                 // Use ProseMirror's replaceWith directly
                 const { state, view } = editor;
-                if (state && view && mergedJson.content) {
+                if (state?.doc && view && mergedJson.content) {
                   console.log('Using ProseMirror transaction to replace content');
                   // Create nodes from JSON
                   const newDoc = state.schema.nodeFromJSON(mergedJson);
@@ -126,7 +148,7 @@ function MergedDocumentViewer({
                   view.dispatch(tr);
                   console.log('Content replaced via transaction');
                 } else {
-                  console.warn('Could not find a way to set content');
+                  console.warn('Could not find a way to set content - state.doc:', !!state?.doc, 'view:', !!view);
                 }
               }
               
@@ -143,6 +165,19 @@ function MergedDocumentViewer({
               } else if (editor.commands?.enableTrackChanges) {
                 editor.commands.enableTrackChanges();
                 console.log('Track changes enabled via command');
+              }
+
+              // Log available track change related methods for debugging
+              console.log('Track change commands available:', {
+                acceptAll: !!editor.commands?.acceptAllTrackedChanges,
+                rejectAll: !!editor.commands?.rejectAllTrackedChanges,
+                acceptById: !!editor.commands?.acceptTrackedChangeById,
+              });
+              
+              // Store reference for external access (for view mode changes)
+              if (typeof window !== 'undefined') {
+                (window as any).__superdocEditor = editor;
+                (window as any).__superdocInstance = sd;
               }
 
             } catch (err) {
@@ -211,7 +246,8 @@ function MergedDocumentViewer({
   }
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={`relative flex flex-col ${className}`}>
+      {/* Loading state */}
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80 z-10">
           <div className="flex flex-col items-center">
@@ -221,6 +257,7 @@ function MergedDocumentViewer({
         </div>
       )}
 
+      {/* Error state */}
       {error && (
         <div className="absolute inset-0 flex items-center justify-center bg-white z-10">
           <div className="text-center p-6">
@@ -235,9 +272,10 @@ function MergedDocumentViewer({
         </div>
       )}
 
+      {/* Document container */}
       <div
         ref={containerRef}
-        className="w-full h-full min-h-[600px] bg-gray-100"
+        className="w-full flex-1 min-h-[600px] bg-gray-100"
       />
     </div>
   );

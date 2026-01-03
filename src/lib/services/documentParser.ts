@@ -34,16 +34,22 @@ export async function parseDocx(file: File): Promise<ParsedDocument> {
     let resolved = false;
 
     const cleanup = () => {
-      if (superdoc) {
-        try {
-          superdoc.destroy?.();
-        } catch (e) {
-          console.warn('Error destroying parser SuperDoc instance:', e);
+      // Delay cleanup to allow SuperDoc to finish any pending operations
+      setTimeout(() => {
+        if (superdoc) {
+          try {
+            // Set to null first to prevent any callbacks from using it
+            const sd = superdoc;
+            superdoc = null;
+            sd.destroy?.();
+          } catch (e) {
+            // Ignore cleanup errors - these are expected when destroying during transition
+          }
         }
-      }
-      if (container.parentNode) {
-        container.parentNode.removeChild(container);
-      }
+        if (container.parentNode) {
+          container.parentNode.removeChild(container);
+        }
+      }, 100);
     };
 
     // Small delay to avoid React StrictMode issues
