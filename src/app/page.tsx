@@ -457,19 +457,7 @@ export default function Home() {
         // Diff the documents
         console.log('Diffing documents...');
         const diffResult = diffDocuments(comparison.v1Json, v2Json);
-        console.log('Diff result:', diffResult);
-        console.log('Modified paragraphs:', diffResult.modifiedParagraphs.length);
-        console.log('Inserted paragraphs:', diffResult.insertedParagraphs.length);
-        console.log('Deleted paragraphs:', diffResult.deletedParagraphs.length);
-        
-        // Log first few text changes for debugging
-        if (diffResult.modifiedParagraphs.length > 0) {
-          const firstMod = diffResult.modifiedParagraphs[0];
-          console.log('First modified paragraph:', {
-            indexA: firstMod.indexA,
-            textChanges: firstMod.textChanges.slice(0, 3),
-          });
-        }
+        console.log('Diff result:', diffResult.summary);
 
         // Create merged document with track changes
         console.log('Creating merged document...');

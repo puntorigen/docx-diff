@@ -3,8 +3,6 @@
  * These types represent changes between two document versions.
  */
 
-import { MarkModel, ParagraphModel } from './document.types';
-
 /**
  * Complete set of changes between two documents.
  */
@@ -36,10 +34,8 @@ export interface FormatChange {
   to: number;
   text: string;
   paragraphIndex: number;
-  /** Marks to add */
-  addMarks: MarkModel[];
-  /** Marks to remove */
-  removeMarks: MarkModel[];
+  /** Description of the format change */
+  description?: string;
 }
 
 /**
@@ -47,7 +43,7 @@ export interface FormatChange {
  */
 export interface ParagraphChange {
   type: 'insert' | 'delete';
-  paragraph: ParagraphModel;
+  text: string;
   /** Position to insert at (for inserts) */
   insertAfterIndex?: number;
 }
@@ -65,12 +61,3 @@ export interface ChangeSummary {
   /** Human-readable key changes */
   highlights: string[];
 }
-
-/**
- * Result of paragraph alignment between two documents.
- */
-export type AlignmentResult =
-  | { type: 'match'; v1: ParagraphModel; v2: ParagraphModel }
-  | { type: 'delete'; v1: ParagraphModel }
-  | { type: 'insert'; v2: ParagraphModel };
-
