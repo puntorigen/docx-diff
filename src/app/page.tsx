@@ -2,103 +2,352 @@
 
 /**
  * DOCX Comparison Engine - Main Page
- * Orchestrates the document comparison workflow.
+ * Uses "Merge and Mark" approach: builds a merged document with track change marks.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { useDocumentStore } from '@/store/document-store';
 import {
   Header,
   DocxUploader,
-  DocumentViewer,
   ChangeSummary,
   ChangesSidebar,
 } from '@/components';
-import { extractDocumentModel } from '@/lib/adapters';
-import { compareDocuments } from '@/lib/core';
-import { applyChangeSet } from '@/lib/adapters';
-import type { DocumentModel } from '@/lib/types';
+import {
+  parseDocx,
+  diffDocuments,
+  mergeDocuments,
+  type ProseMirrorJSON,
+  type DiffResult,
+} from '@/lib/services';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SuperDocInstance = any;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type EditorInstance = any;
+
+interface ComparisonState {
+  v1Json: ProseMirrorJSON | null;
+  v2Json: ProseMirrorJSON | null;
+  mergedJson: ProseMirrorJSON | null;
+  diffResult: DiffResult | null;
+}
 
 /**
- * Load a DOCX file using SuperDoc in a hidden container and extract its model.
+ * Document Viewer Component for the merged document.
+ * Loads JSON content directly into SuperDoc.
  */
-async function loadDocxInHiddenEditor(file: File): Promise<DocumentModel> {
-  const { SuperDoc } = await import('superdoc');
-  
-  // Create a hidden container for the editor
-  const container = document.createElement('div');
-  container.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:800px;height:600px;visibility:hidden;';
-  document.body.appendChild(container);
-  
-  return new Promise((resolve, reject) => {
-    let superdoc: SuperDocInstance = null;
-    let resolved = false;
+function MergedDocumentViewer({
+  file,
+  mergedJson,
+  className = '',
+}: {
+  file: File;
+  mergedJson: ProseMirrorJSON | null;
+  className?: string;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const superdocRef = useRef<SuperDocInstance | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+
+  // Initialize SuperDoc when file or mergedJson changes
+  const initRef = useRef(false);
+
+  const initialize = useCallback(async () => {
+    if (initRef.current || !containerRef.current || !mountedRef.current) return;
+    initRef.current = true;
+
+    // Small delay to let React settle
+    await new Promise(resolve => setTimeout(resolve, 100));
     
-    const cleanup = () => {
-      if (superdoc) {
+    if (!mountedRef.current || !containerRef.current) {
+      initRef.current = false;
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    // Clean up previous instance
+    if (superdocRef.current) {
+      try {
+        superdocRef.current.destroy?.();
+      } catch {
+        // Ignore cleanup errors
+      }
+      superdocRef.current = null;
+    }
+
+    // Create fresh container
+    const innerContainer = document.createElement('div');
+    innerContainer.style.width = '100%';
+    innerContainer.style.height = '100%';
+    containerRef.current.innerHTML = '';
+    containerRef.current.appendChild(innerContainer);
+
+    try {
+      const { SuperDoc } = await import('superdoc');
+      await import('superdoc/style.css');
+
+      const superdoc = new SuperDoc({
+        selector: innerContainer,
+        document: file,
+        documentMode: 'editing', // Editing mode allows accepting/rejecting changes
+        role: 'editor', // Editor role has permission to accept changes
+        rulers: false,
+        user: {
+          name: 'Comparison Viewer',
+          email: 'viewer@comparison.local',
+        },
+        onReady: ({ superdoc: sd }: { superdoc: SuperDocInstance }) => {
+          superdocRef.current = sd;
+
+          // If we have merged JSON, set it as the content
+          if (mergedJson && sd?.activeEditor) {
+            try {
+              console.log('Setting merged content...');
+              console.log('Available commands:', Object.keys(sd.activeEditor.commands || {}));
+              
+              const editor = sd.activeEditor;
+              
+              // Try different methods to set content
+              if (editor.commands?.setContent) {
+                editor.commands.setContent(mergedJson);
+              } else if (editor.setContent) {
+                editor.setContent(mergedJson);
+              } else {
+                // Use ProseMirror's replaceWith directly
+                const { state, view } = editor;
+                if (state && view && mergedJson.content) {
+                  console.log('Using ProseMirror transaction to replace content');
+                  // Create nodes from JSON
+                  const newDoc = state.schema.nodeFromJSON(mergedJson);
+                  const tr = state.tr.replaceWith(0, state.doc.content.size, newDoc.content);
+                  view.dispatch(tr);
+                  console.log('Content replaced via transaction');
+                } else {
+                  console.warn('Could not find a way to set content');
+                }
+              }
+              
+              console.log('Merged content set successfully');
+
+              // Enable track changes REVIEW mode to show both insertions and deletions visually
+              // 'review' mode shows: strikethrough for deletions, highlighting for insertions
+              if (sd.setTrackedChangesPreferences) {
+                sd.setTrackedChangesPreferences({
+                  mode: 'review',  // 'review' shows both, 'original' hides insertions, 'final' hides deletions
+                  enabled: true
+                });
+                console.log('Track changes set to REVIEW mode');
+              } else if (editor.commands?.enableTrackChanges) {
+                editor.commands.enableTrackChanges();
+                console.log('Track changes enabled via command');
+              }
+
+            } catch (err) {
+              console.error('Failed to set merged content:', err);
+            }
+          }
+
+          setIsLoading(false);
+        },
+        onException: ({ error: err }: { error: Error }) => {
+          console.error('SuperDoc error:', err);
+          setError(err.message);
+          setIsLoading(false);
+        },
+      });
+
+      superdocRef.current = superdoc;
+    } catch (err) {
+      console.error('Failed to initialize SuperDoc:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load document');
+      setIsLoading(false);
+    }
+
+    initRef.current = false;
+  }, [file, mergedJson]);
+
+  // Effect to initialize
+  useEffect(() => {
+    mountedRef.current = true;
+    initialize();
+
+    return () => {
+      mountedRef.current = false;
+      if (superdocRef.current) {
         try {
-          superdoc.destroy?.();
+          superdocRef.current.destroy?.();
         } catch {
           // Ignore cleanup errors
         }
-      }
-      if (container.parentNode) {
-        container.parentNode.removeChild(container);
+        superdocRef.current = null;
       }
     };
-    
+  }, [initialize]);
+
+  // Reinitialize when mergedJson changes
+  const prevMergedRef = useRef<ProseMirrorJSON | null>(null);
+  if (mergedJson !== prevMergedRef.current) {
+    prevMergedRef.current = mergedJson;
+    if (superdocRef.current?.activeEditor && mergedJson) {
+      try {
+        const editor = superdocRef.current.activeEditor;
+        if (editor.commands?.setContent) {
+          editor.commands.setContent(mergedJson);
+        }
+        // Enable track changes REVIEW mode
+        if (superdocRef.current.setTrackedChangesPreferences) {
+          superdocRef.current.setTrackedChangesPreferences({
+            mode: 'review',
+            enabled: true
+          });
+        }
+      } catch (err) {
+        console.error('Failed to update content:', err);
+      }
+    }
+  }
+
+  return (
+    <div className={`relative ${className}`}>
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80 z-10">
+          <div className="flex flex-col items-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mb-3"></div>
+            <p className="text-gray-600">Loading document...</p>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white z-10">
+          <div className="text-center p-6">
+            <div className="text-red-500 mb-3">
+              <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <p className="text-gray-700 font-medium">Failed to load document</p>
+            <p className="text-gray-500 text-sm mt-1">{error}</p>
+          </div>
+        </div>
+      )}
+
+      <div
+        ref={containerRef}
+        className="w-full h-full min-h-[600px] bg-gray-100"
+      />
+    </div>
+  );
+}
+
+/**
+ * Simple Document Viewer (for V1 before comparison).
+ */
+function SimpleDocumentViewer({
+  file,
+  onReady,
+  className = '',
+}: {
+  file: File;
+  onReady?: (json: ProseMirrorJSON) => void;
+  className?: string;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const superdocRef = useRef<SuperDocInstance | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const initRef = useRef(false);
+
+  const initialize = useCallback(async () => {
+    if (initRef.current || !containerRef.current) return;
+    initRef.current = true;
+
+    setIsLoading(true);
+    setError(null);
+
+    // Create fresh container
+    const innerContainer = document.createElement('div');
+    innerContainer.style.width = '100%';
+    innerContainer.style.height = '100%';
+    containerRef.current.innerHTML = '';
+    containerRef.current.appendChild(innerContainer);
+
     try {
-      superdoc = new SuperDoc({
-        selector: container,
+      const { SuperDoc } = await import('superdoc');
+      await import('superdoc/style.css');
+
+      const superdoc = new SuperDoc({
+        selector: innerContainer,
         document: file,
         documentMode: 'viewing',
         rulers: false,
-        user: { name: 'System', email: 'system@example.com' },
-        onReady: () => {
-          if (resolved) return;
-          try {
-            // Get the active editor from superdoc once it's ready
-            const editor = superdoc?.activeEditor;
-            if (!editor) {
-              throw new Error('No active editor found');
+        user: {
+          name: 'Document Viewer',
+          email: 'viewer@comparison.local',
+        },
+        onReady: ({ superdoc: sd }: { superdoc: SuperDocInstance }) => {
+          superdocRef.current = sd;
+          setIsLoading(false);
+
+          // Extract and report JSON
+          if (onReady && sd?.activeEditor) {
+            try {
+              const json = sd.activeEditor.getJSON();
+              onReady(json);
+            } catch (err) {
+              console.error('Failed to extract JSON:', err);
             }
-            // Extract the document model from the editor
-            const model = extractDocumentModel(editor);
-            resolved = true;
-            cleanup();
-            resolve(model);
-          } catch (err) {
-            resolved = true;
-            cleanup();
-            reject(err);
           }
         },
         onException: ({ error: err }: { error: Error }) => {
-          if (resolved) return;
-          resolved = true;
-          cleanup();
-          reject(err);
+          console.error('SuperDoc error:', err);
+          setError(err.message);
+          setIsLoading(false);
         },
       });
-      
-      // Timeout after 30 seconds
-      setTimeout(() => {
-        if (!resolved) {
-          resolved = true;
-          cleanup();
-          reject(new Error('Document loading timed out'));
-        }
-      }, 30000);
+
+      superdocRef.current = superdoc;
     } catch (err) {
-      cleanup();
-      reject(err);
+      console.error('Failed to initialize SuperDoc:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load document');
+      setIsLoading(false);
     }
-  });
+  }, [file, onReady]);
+
+  // Initialize on mount
+  useEffect(() => {
+    initialize();
+  }, [initialize]);
+
+  return (
+    <div className={`relative ${className}`}>
+      {isLoading && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80 z-10">
+          <div className="flex flex-col items-center">
+            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mb-3"></div>
+            <p className="text-gray-600">Loading document...</p>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-white z-10">
+          <div className="text-center p-6">
+            <p className="text-red-500 font-medium">Failed to load document</p>
+            <p className="text-gray-500 text-sm mt-1">{error}</p>
+          </div>
+        </div>
+      )}
+
+      <div
+        ref={containerRef}
+        className="w-full h-full min-h-[600px] bg-gray-100"
+      />
+    </div>
+  );
 }
 
 export default function Home() {
@@ -106,9 +355,7 @@ export default function Home() {
     stage,
     setStage,
     v1File,
-    v1Model,
     setV1File,
-    setV1Model,
     setV2,
     changeSet,
     setChangeSet,
@@ -119,30 +366,42 @@ export default function Home() {
     reset,
   } = useDocumentStore();
 
-  const superdocRef = useRef<SuperDocInstance | null>(null);
-  const editorRef = useRef<EditorInstance | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [comparison, setComparison] = useState<ComparisonState>({
+    v1Json: null,
+    v2Json: null,
+    mergedJson: null,
+    diffResult: null,
+  });
 
   /**
-   * Handle V1 file upload - just set the file, extraction happens when editor is ready
+   * Handle V1 file upload
    */
   const handleV1Upload = useCallback(
     (file: File) => {
       setError(null);
-      // Store file but don't extract model yet - that happens in onEditorReady
       setV1File(file);
+      setComparison({ v1Json: null, v2Json: null, mergedJson: null, diffResult: null });
       setStage('viewing');
     },
     [setV1File, setStage, setError]
   );
 
   /**
+   * Handle V1 JSON ready (from viewer)
+   */
+  const handleV1JsonReady = useCallback((json: ProseMirrorJSON) => {
+    console.log('V1 JSON extracted:', json?.type);
+    setComparison((prev) => ({ ...prev, v1Json: json }));
+  }, []);
+
+  /**
    * Handle V2 file upload and run comparison
    */
   const handleV2Upload = useCallback(
     async (file: File) => {
-      if (!v1Model || !superdocRef.current || !editorRef.current) {
-        setError('V1 document not properly loaded. Please wait for it to finish loading.');
+      if (!comparison.v1Json) {
+        setError('V1 document not ready. Please wait for it to finish loading.');
         return;
       }
 
@@ -152,38 +411,75 @@ export default function Home() {
       setError(null);
 
       try {
-        // Load V2 in a hidden editor and extract model
-        const v2Model = await loadDocxInHiddenEditor(file);
-        setV2(file, v2Model);
+        // Parse V2 document
+        console.log('Parsing V2 document...');
+        const { json: v2Json } = await parseDocx(file);
+        console.log('V2 JSON extracted:', v2Json?.type);
 
-        // Debug: log what we're comparing
-        console.log('V1 Model:', v1Model);
-        console.log('V1 Paragraphs:', v1Model.paragraphs.length);
-        console.log('V1 First para:', v1Model.paragraphs[0]?.textContent?.substring(0, 50));
-        console.log('V2 Model:', v2Model);
-        console.log('V2 Paragraphs:', v2Model.paragraphs.length);
-        console.log('V2 First para:', v2Model.paragraphs[0]?.textContent?.substring(0, 50));
-
-        // Compare documents
-        const changes = compareDocuments(v1Model, v2Model);
-        console.log('Changes detected:', changes);
-        console.log('Text changes:', changes.textChanges.length);
-        console.log('Format changes:', changes.formatChanges.length);
-        console.log('Paragraph changes:', changes.paragraphChanges.length);
-        if (changes.textChanges.length > 0) {
-          console.log('All text changes:');
-          changes.textChanges.forEach((tc, i) => {
-            console.log(`  ${i}: ${tc.type} "${tc.text}" at position ${tc.position}`);
+        // Diff the documents
+        console.log('Diffing documents...');
+        const diffResult = diffDocuments(comparison.v1Json, v2Json);
+        console.log('Diff result:', diffResult);
+        console.log('Modified paragraphs:', diffResult.modifiedParagraphs.length);
+        console.log('Inserted paragraphs:', diffResult.insertedParagraphs.length);
+        console.log('Deleted paragraphs:', diffResult.deletedParagraphs.length);
+        
+        // Log first few text changes for debugging
+        if (diffResult.modifiedParagraphs.length > 0) {
+          const firstMod = diffResult.modifiedParagraphs[0];
+          console.log('First modified paragraph:', {
+            indexA: firstMod.indexA,
+            textChanges: firstMod.textChanges.slice(0, 3),
           });
         }
-        if (changes.paragraphChanges.length > 0) {
-          console.log('First paragraph change:', changes.paragraphChanges[0]);
-        }
 
-        // Apply changes to editor in suggesting mode
-        await applyChangeSet(superdocRef.current, editorRef.current, changes);
+        // Create merged document with track changes
+        console.log('Creating merged document...');
+        const mergedJson = mergeDocuments(comparison.v1Json, v2Json, diffResult);
+        console.log('Merged document created:', mergedJson?.type);
 
-        setChangeSet(changes);
+        // Update state
+        setComparison((prev) => ({
+          ...prev,
+          v2Json,
+          mergedJson,
+          diffResult,
+        }));
+
+        // Set V2 in store (for compatibility with sidebar)
+        setV2(file, { paragraphs: [], metadata: { modifiedAt: new Date() } });
+
+        // Convert diff result to ChangeSet format for sidebar
+        // Extract text changes from segments
+        const textChanges = diffResult.segments
+          .filter((s) => s.type !== 'equal')
+          .map((s, idx) => ({
+            type: s.type as 'insert' | 'delete',
+            text: s.text,
+            position: idx,
+            paragraphIndex: 0,
+          }));
+
+        // Count insertions and deletions
+        const insertions = diffResult.segments.filter((s) => s.type === 'insert').length;
+        const deletions = diffResult.segments.filter((s) => s.type === 'delete').length;
+
+        const changeSetData = {
+          textChanges,
+          formatChanges: [],
+          paragraphChanges: [],
+          summary: {
+            totalChanges: insertions + deletions,
+            insertions,
+            deletions,
+            formatChanges: 0,
+            paragraphsAdded: 0,
+            paragraphsRemoved: 0,
+            highlights: diffResult.summary,
+          },
+        };
+
+        setChangeSet(changeSetData);
         setStage('result');
       } catch (err) {
         console.error('Comparison failed:', err);
@@ -193,35 +489,7 @@ export default function Home() {
         setIsProcessing(false);
       }
     },
-    [v1Model, setV2, setChangeSet, setStage, setIsProcessing, setError]
-  );
-
-  /**
-   * Handle editor ready - extract V1 model here
-   */
-  const handleEditorReady = useCallback(
-    (superdoc: SuperDocInstance, editor: EditorInstance) => {
-      superdocRef.current = superdoc;
-      editorRef.current = editor;
-      
-      // Debug: log editor state
-      console.log('Editor ready, state:', editor?.state);
-      console.log('Editor doc:', editor?.state?.doc);
-      
-      // Extract V1 model from the editor if not already done
-      if (!v1Model && v1File) {
-        try {
-          const model = extractDocumentModel(editor);
-          console.log('V1 Model extracted:', model);
-          console.log('V1 Paragraphs found:', model.paragraphs.length);
-          setV1Model(model);
-        } catch (err) {
-          console.error('Failed to extract V1 model:', err);
-          setError(err instanceof Error ? err.message : 'Failed to extract document model');
-        }
-      }
-    },
-    [v1File, v1Model, setV1Model, setError]
+    [comparison.v1Json, setV2, setChangeSet, setStage, setIsProcessing, setError]
   );
 
   /**
@@ -229,8 +497,7 @@ export default function Home() {
    */
   const handleReset = useCallback(() => {
     reset();
-    superdocRef.current = null;
-    editorRef.current = null;
+    setComparison({ v1Json: null, v2Json: null, mergedJson: null, diffResult: null });
   }, [reset]);
 
   return (
@@ -255,37 +522,59 @@ export default function Home() {
           </div>
         )}
 
-        {/* Viewing / Comparing / Result stages */}
-        {(stage === 'viewing' || stage === 'comparing' || stage === 'result') &&
-          v1File && (
-            <div className="flex-1 flex">
-              {/* Document viewer */}
-              <div className="flex-1 flex flex-col">
-                <DocumentViewer
-                  key={v1File.name + v1File.lastModified}
-                  file={v1File}
-                  onReady={handleEditorReady}
-                  documentMode="editing"
-                  className="flex-1"
-                />
+        {/* Viewing stage - show V1 document */}
+        {stage === 'viewing' && v1File && (
+          <div className="flex-1 flex">
+            <div className="flex-1 flex flex-col">
+              <SimpleDocumentViewer
+                key={v1File.name + v1File.lastModified}
+                file={v1File}
+                onReady={handleV1JsonReady}
+                className="flex-1"
+              />
+            </div>
+          </div>
+        )}
 
-                {/* Summary panel (bottom) */}
-                {stage === 'result' && changeSet && (
-                  <div className="p-4 bg-gray-50 border-t border-gray-200">
-                    <ChangeSummary summary={changeSet.summary} />
-                  </div>
-                )}
-              </div>
+        {/* Comparing stage - show loading */}
+        {stage === 'comparing' && (
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <p className="text-gray-600">Comparing documents...</p>
+            </div>
+          </div>
+        )}
 
-              {/* Sidebar (right) */}
-              {stage === 'result' && changeSet && (
-                <ChangesSidebar
-                  changeSet={changeSet}
-                  className="w-80 flex-shrink-0"
-                />
+        {/* Result stage - show merged document with track changes */}
+        {stage === 'result' && v1File && (
+          <div className="flex-1 flex">
+            {/* Document viewer with merged content */}
+            <div className="flex-1 flex flex-col">
+              <MergedDocumentViewer
+                key={`merged-${v1File.name}`}
+                file={v1File}
+                mergedJson={comparison.mergedJson}
+                className="flex-1"
+              />
+
+              {/* Summary panel (bottom) */}
+              {changeSet && (
+                <div className="p-4 bg-gray-50 border-t border-gray-200">
+                  <ChangeSummary summary={changeSet.summary} />
+                </div>
               )}
             </div>
-          )}
+
+            {/* Sidebar (right) */}
+            {changeSet && (
+              <ChangesSidebar
+                changeSet={changeSet}
+                className="w-80 flex-shrink-0"
+              />
+            )}
+          </div>
+        )}
 
         {/* Processing overlay */}
         {isProcessing && (

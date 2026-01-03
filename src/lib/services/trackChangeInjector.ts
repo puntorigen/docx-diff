@@ -1,0 +1,164 @@
+/**
+ * Track Change Injector Service
+ * Creates track change marks for insertions, deletions, and format changes.
+ */
+
+import { v4 as uuidv4 } from 'uuid';
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ProseMirrorJSON = any;
+
+export interface TrackChangeAuthor {
+  name: string;
+  email: string;
+}
+
+const DEFAULT_AUTHOR: TrackChangeAuthor = {
+  name: 'Comparison Tool',
+  email: 'comparison@tool.local',
+};
+
+/**
+ * Create a trackInsert mark.
+ */
+export function createTrackInsertMark(author: TrackChangeAuthor = DEFAULT_AUTHOR) {
+  return {
+    type: 'trackInsert',
+    attrs: {
+      id: uuidv4(),
+      author: author.name,
+      authorEmail: author.email,
+      authorImage: '',
+      date: new Date().toISOString(),
+    },
+  };
+}
+
+/**
+ * Create a trackDelete mark.
+ */
+export function createTrackDeleteMark(author: TrackChangeAuthor = DEFAULT_AUTHOR) {
+  return {
+    type: 'trackDelete',
+    attrs: {
+      id: uuidv4(),
+      author: author.name,
+      authorEmail: author.email,
+      authorImage: '',
+      date: new Date().toISOString(),
+    },
+  };
+}
+
+/**
+ * Create a trackFormat mark.
+ */
+export function createTrackFormatMark(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  before: any[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  after: any[],
+  author: TrackChangeAuthor = DEFAULT_AUTHOR
+) {
+  return {
+    type: 'trackFormat',
+    attrs: {
+      id: uuidv4(),
+      author: author.name,
+      authorEmail: author.email,
+      date: new Date().toISOString(),
+      before,
+      after,
+    },
+  };
+}
+
+/**
+ * Add a mark to a text node, preserving existing marks.
+ */
+export function addMarkToTextNode(
+  node: ProseMirrorJSON,
+  mark: ProseMirrorJSON
+): ProseMirrorJSON {
+  if (node.type !== 'text') {
+    return node;
+  }
+
+  return {
+    ...node,
+    marks: [...(node.marks || []), mark],
+  };
+}
+
+/**
+ * Create a text node with specific marks.
+ */
+export function createTextNode(
+  text: string,
+  marks: ProseMirrorJSON[] = []
+): ProseMirrorJSON {
+  const node: ProseMirrorJSON = {
+    type: 'text',
+    text,
+  };
+
+  if (marks.length > 0) {
+    node.marks = marks;
+  }
+
+  return node;
+}
+
+/**
+ * Apply trackDelete mark to all text in a node (recursively).
+ */
+export function markAllAsDeleted(
+  node: ProseMirrorJSON,
+  author: TrackChangeAuthor = DEFAULT_AUTHOR
+): ProseMirrorJSON {
+  if (node.type === 'text') {
+    return addMarkToTextNode(node, createTrackDeleteMark(author));
+  }
+
+  if (node.content && Array.isArray(node.content)) {
+    return {
+      ...node,
+      content: node.content.map((child: ProseMirrorJSON) =>
+        markAllAsDeleted(child, author)
+      ),
+    };
+  }
+
+  return node;
+}
+
+/**
+ * Apply trackInsert mark to all text in a node (recursively).
+ */
+export function markAllAsInserted(
+  node: ProseMirrorJSON,
+  author: TrackChangeAuthor = DEFAULT_AUTHOR
+): ProseMirrorJSON {
+  if (node.type === 'text') {
+    return addMarkToTextNode(node, createTrackInsertMark(author));
+  }
+
+  if (node.content && Array.isArray(node.content)) {
+    return {
+      ...node,
+      content: node.content.map((child: ProseMirrorJSON) =>
+        markAllAsInserted(child, author)
+      ),
+    };
+  }
+
+  return node;
+}
+
+/**
+ * Clone a node deeply.
+ */
+export function cloneNode(node: ProseMirrorJSON): ProseMirrorJSON {
+  return JSON.parse(JSON.stringify(node));
+}
+

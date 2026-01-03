@@ -28,3 +28,50 @@ body {
 [data-superdoc] {
   height: 100% !important;
 }
+
+/* Track Changes Styling */
+/* Deletions - red strikethrough */
+[data-track-delete],
+.track-delete,
+span[data-type="trackDelete"],
+.ProseMirror span.trackDelete {
+  color: #dc2626 !important;
+  text-decoration: line-through !important;
+  background-color: #fef2f2 !important;
+}
+
+/* Insertions - green underline */
+[data-track-insert],
+.track-insert,
+span[data-type="trackInsert"],
+.ProseMirror span.trackInsert {
+  color: #16a34a !important;
+  text-decoration: underline !important;
+  background-color: #f0fdf4 !important;
+}
+
+/* Format changes - yellow highlight */
+[data-track-format],
+.track-format,
+span[data-type="trackFormat"],
+.ProseMirror span.trackFormat {
+  background-color: #fef9c3 !important;
+  border-bottom: 2px dashed #ca8a04 !important;
+}
+
+/* SuperDoc specific track change styling */
+.sd-track-insert {
+  color: #16a34a !important;
+  text-decoration: underline !important;
+  background-color: #f0fdf4 !important;
+}
+
+.sd-track-delete {
+  color: #dc2626 !important;
+  text-decoration: line-through !important;
+  background-color: #fef2f2 !important;
+}
+
+.sd-track-format {
+  background-color: #fef9c3 !important;
+}
