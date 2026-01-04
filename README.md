@@ -53,6 +53,13 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000)
 
+### Docker
+
+```bash
+docker build -t docxdiff .
+docker run -p 3000:3000 docxdiff
+```
+
 ---
 
 ## 🛠️ Tech Stack
