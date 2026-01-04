@@ -9,6 +9,7 @@ import { useCallback, useRef, useState, useEffect } from 'react';
 import { useDocumentStore } from '@/store/document-store';
 import {
   Header,
+  Footer,
   DocxUploader,
   ChangeSummary,
 } from '@/components';
@@ -724,6 +725,9 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* Footer */}
+      <Footer />
     </div>
   );
 }
