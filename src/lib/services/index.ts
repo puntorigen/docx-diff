@@ -8,4 +8,6 @@ export { diffDocuments, type DiffResult, type DiffSegment, type FormatChange } f
 export { createTrackInsertMark, createTrackDeleteMark, createTrackFormatMark, markAllAsDeleted, markAllAsInserted, cloneNode, createTextNode, type TrackChangeAuthor } from './trackChangeInjector';
 export { mergeDocuments, createSimpleMergedDocument } from './mergeDocuments';
 export { ExportPreparation, downloadBlob, type ExportPreparationResult } from './exportPreparation';
+export { extractEnrichedChanges } from './changeContextExtractor';
+export { GroqService } from './groqService';
 

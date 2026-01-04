@@ -5,7 +5,7 @@
  * Uses "Merge and Mark" approach: builds a merged document with track change marks.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { useDocumentStore } from '@/store/document-store';
 import {
   Header,
@@ -19,12 +19,32 @@ import {
   mergeDocuments,
   ExportPreparation,
   downloadBlob,
+  extractEnrichedChanges,
   type ProseMirrorJSON,
   type DiffResult,
 } from '@/lib/services';
+import { summarizeChanges } from '@/lib/actions/summarize';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SuperDocInstance = any;
+
+/**
+ * Get color for bullet based on change type
+ */
+function getBulletColor(type: string): string {
+  switch (type) {
+    case 'format':
+      return '#F59E0B'; // amber
+    case 'replacement':
+      return '#007ACC'; // blue (brand)
+    case 'insertion':
+      return '#10B981'; // green
+    case 'deletion':
+      return '#EF4444'; // red
+    default:
+      return '#6B7280'; // gray
+  }
+}
 
 interface ComparisonState {
   v1Json: ProseMirrorJSON | null;
@@ -59,8 +79,45 @@ export default function Home() {
     diffResult: null,
   });
 
+  // AI Summary state - structured with type for color coding
+  const [aiSummary, setAiSummary] = useState<{ type: string; text: string }[] | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
   // Ref to store the active SuperDoc instance for download
   const activeSuperdocRef = useRef<SuperDocInstance | null>(null);
+
+  /**
+   * Generate AI summary when comparison completes
+   */
+  useEffect(() => {
+    if (stage === 'result' && comparison.mergedJson && !aiSummary && !summaryLoading) {
+      generateAiSummary();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage, comparison.mergedJson]);
+
+  async function generateAiSummary() {
+    if (!comparison.mergedJson) return;
+    
+    setSummaryLoading(true);
+    try {
+      const enrichedChanges = extractEnrichedChanges(comparison.mergedJson);
+      
+      if (enrichedChanges.length === 0) {
+        setAiSummary([{ type: 'other', text: 'No changes detected' }]);
+        return;
+      }
+      
+      // Use Server Action (no public API endpoint)
+      const bullets = await summarizeChanges(enrichedChanges);
+      setAiSummary(bullets);
+    } catch (error) {
+      console.error('AI summary failed:', error);
+      // Keep showing basic stats on error
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
 
   /**
    * Handle download of current document as DOCX
@@ -142,6 +199,7 @@ export default function Home() {
     setShowUploadModal(false);
     setStage('comparing');
     setError(null);
+    setAiSummary(null); // Reset AI summary for new comparison
 
     try {
       // Parse V2 and diff
@@ -265,24 +323,44 @@ export default function Home() {
                     </div>
                     <div>
                       <h3 className="font-semibold mb-1" style={{ color: '#005B9C' }}>
-                        Changes detected in new version
+                        Main changes detected in new version
                       </h3>
-                      <div className="text-sm text-gray-600 space-y-1">
+                      <div className="text-sm text-gray-600 space-y-2">
                         {changeSet.summary.totalChanges > 0 ? (
                           <>
-                            <p>
-                              Found <span className="font-medium" style={{ color: '#007ACC' }}>{changeSet.summary.totalChanges} change{changeSet.summary.totalChanges !== 1 ? 's' : ''}</span>
-                              {changeSet.summary.insertions > 0 && (
-                                <span className="text-green-600"> • {changeSet.summary.insertions} insertion{changeSet.summary.insertions !== 1 ? 's' : ''}</span>
-                              )}
-                              {changeSet.summary.deletions > 0 && (
-                                <span className="text-red-600"> • {changeSet.summary.deletions} deletion{changeSet.summary.deletions !== 1 ? 's' : ''}</span>
-                              )}
-                              {changeSet.summary.formatChanges > 0 && (
-                                <span className="text-amber-600"> • {changeSet.summary.formatChanges} format change{changeSet.summary.formatChanges !== 1 ? 's' : ''}</span>
-                              )}
-                            </p>
-                            <p className="text-xs text-gray-500">
+                            {/* AI Summary or loading */}
+                            {summaryLoading ? (
+                              <p className="flex items-center gap-2">
+                                <span className="inline-block w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                                <span className="text-gray-500">Analyzing changes...</span>
+                              </p>
+                            ) : aiSummary && aiSummary.length > 0 ? (
+                              <ul className="space-y-1.5">
+                                {aiSummary.map((bullet, i) => (
+                                  <li key={i} className="flex items-start gap-2">
+                                    <span 
+                                      className="inline-block w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
+                                      style={{ backgroundColor: getBulletColor(bullet.type) }}
+                                    />
+                                    <span>{bullet.text}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p>
+                                Found <span className="font-medium" style={{ color: '#007ACC' }}>{changeSet.summary.totalChanges} change{changeSet.summary.totalChanges !== 1 ? 's' : ''}</span>
+                                {changeSet.summary.insertions > 0 && (
+                                  <span className="text-green-600"> • {changeSet.summary.insertions} insertion{changeSet.summary.insertions !== 1 ? 's' : ''}</span>
+                                )}
+                                {changeSet.summary.deletions > 0 && (
+                                  <span className="text-red-600"> • {changeSet.summary.deletions} deletion{changeSet.summary.deletions !== 1 ? 's' : ''}</span>
+                                )}
+                                {changeSet.summary.formatChanges > 0 && (
+                                  <span className="text-amber-600"> • {changeSet.summary.formatChanges} format change{changeSet.summary.formatChanges !== 1 ? 's' : ''}</span>
+                                )}
+                              </p>
+                            )}
+                            <p className="text-xs text-gray-500 mt-1">
                               Use the track change bubbles in the document to accept or reject each change.
                             </p>
                           </>

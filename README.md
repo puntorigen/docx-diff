@@ -36,6 +36,7 @@
 
 - 📄 **Upload & Compare** – Drop two DOCX files and see differences instantly
 - 🔍 **Track Changes** – Insertions (green), deletions (red), format changes (yellow)
+- ✨ **AI Summary** – LLM-powered change descriptions (via Groq)
 - ✅ **Accept/Reject** – Review changes individually via SuperDoc's bubble UI
 - 🎨 **Format Detection** – Catches bold, italic, and other formatting changes
 - 📊 **File Indicator** – Always see which files are being compared
@@ -67,8 +68,16 @@ docker run -p 3000:3000 docxdiff
 - **Next.js 16** – App Router
 - **SuperDoc** – Document editor ([superdoc.dev](https://superdoc.dev))
 - **diff-match-patch** – Character-level diffing
+- **Groq** – AI summary generation (via Server Action)
 - **Tailwind CSS** – Styling
 - **Zustand** – State management
+
+### Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `GROQ_API_KEY` | Optional | Enables AI-powered change summaries |
+| `NEXT_PUBLIC_BASE_URL` | Optional | Base URL for SEO metadata |
 
 ---
 

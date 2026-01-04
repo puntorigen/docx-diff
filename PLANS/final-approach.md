@@ -73,6 +73,7 @@ The solution uses a **"Merge and Mark"** approach:
 {
   "dependencies": {
     "diff-match-patch": "^1.0.5",
+    "groq-sdk": "^0.8.0",
     "next": "16.1.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
@@ -101,13 +102,19 @@ src/
 │   │   └── DocxUploader.tsx
 │   └── index.ts
 ├── lib/
-│   └── services/
-│       ├── documentParser.ts       # DOCX → ProseMirror JSON
-│       ├── documentDiffer.ts       # Character-level diff
-│       ├── mergeDocuments.ts       # Apply track changes to cloned doc
-│       ├── trackChangeInjector.ts  # Create track change marks
-│       ├── exportPreparation.ts    # Fix SuperDoc export limitations
-│       └── index.ts
+│   ├── actions/
+│   │   └── summarize.ts            # Server Action for AI summary
+│   ├── services/
+│   │   ├── documentParser.ts       # DOCX → ProseMirror JSON
+│   │   ├── documentDiffer.ts       # Character-level diff
+│   │   ├── mergeDocuments.ts       # Apply track changes to cloned doc
+│   │   ├── trackChangeInjector.ts  # Create track change marks
+│   │   ├── exportPreparation.ts    # Fix SuperDoc export limitations
+│   │   ├── changeContextExtractor.ts  # Extract enriched changes for AI
+│   │   ├── groqService.ts          # Groq LLM API wrapper
+│   │   └── index.ts
+│   └── types/
+│       └── summary.types.ts        # AI summary types
 └── store/
     └── document-store.ts           # Zustand state management
 ```
@@ -964,6 +971,90 @@ async function handleDownload(superdoc: SuperDocInstance, filename: string) {
 2. **Standalone trackFormat marks**: SuperDoc only exports format changes when paired with `trackInsert`/`trackDelete`. We transform standalone format changes into delete+insert pairs.
 
 > ⚠️ **Limitation**: Rejecting format changes in MS Word will erase the text due to how Word handles the generated XML. Accepting works correctly.
+
+---
+
+## Step 9: AI-Powered Change Summary
+
+The application uses Groq LLM to generate human-readable bullet points describing what changed.
+
+### Architecture
+
+```
+┌─────────────────┐     ┌────────────────────┐     ┌─────────────┐
+│  mergedJson     │ ──▶ │ extractEnriched    │ ──▶ │ summarize   │ ──▶ Bullets
+│  (with track    │     │ Changes()          │     │ Changes()   │
+│  marks)         │     │ (context extractor)│     │ (Server     │
+└─────────────────┘     └────────────────────┘     │  Action)    │
+                                                    └─────────────┘
+                                                          │
+                                                          ▼
+                                                    ┌─────────────┐
+                                                    │ GroqService │
+                                                    │ (LLM API)   │
+                                                    └─────────────┘
+```
+
+### Why Server Action (not API Route)?
+
+Using a Server Action instead of `/api/summarize-changes` provides better security:
+
+- **No public endpoint**: The summarization cannot be called externally
+- **Only frontend can trigger**: curl, Postman, etc. cannot access it
+- **Simpler code**: No HTTP request/response handling needed
+
+### Implementation
+
+```typescript
+// src/lib/actions/summarize.ts
+'use server';
+
+import { GroqService } from '@/lib/services/groqService';
+import type { EnrichedChange, SummaryBullet } from '@/lib/types/summary.types';
+
+export async function summarizeChanges(changes: EnrichedChange[]): Promise<SummaryBullet[]> {
+  if (!changes.length) return [{ type: 'other', text: 'No changes to summarize' }];
+
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) return fallbackSummary(changes);
+
+  try {
+    const groq = new GroqService(apiKey);
+    return await groq.generateSummary(changes);
+  } catch {
+    return fallbackSummary(changes);
+  }
+}
+```
+
+### Usage in page.tsx
+
+```typescript
+import { summarizeChanges } from '@/lib/actions/summarize';
+import { extractEnrichedChanges } from '@/lib/services';
+
+// After comparison completes
+useEffect(() => {
+  if (stage === 'result' && comparison.mergedJson) {
+    generateAiSummary();
+  }
+}, [stage, comparison.mergedJson]);
+
+async function generateAiSummary() {
+  const enrichedChanges = extractEnrichedChanges(comparison.mergedJson!);
+  const bullets = await summarizeChanges(enrichedChanges);  // Direct call, no fetch!
+  setAiSummary(bullets);
+}
+```
+
+### Environment Variable
+
+```env
+# .env.local
+GROQ_API_KEY=gsk_xxxxxxxxxxxxxxxxxxxxx
+```
+
+> **Note**: If `GROQ_API_KEY` is not set, the app falls back to basic change counts.
 
 ---
 

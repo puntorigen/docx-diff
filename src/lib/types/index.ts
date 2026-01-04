@@ -4,4 +4,5 @@
 
 export * from './document.types';
 export * from './diff.types';
+export * from './summary.types';
 

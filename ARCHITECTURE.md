@@ -61,16 +61,21 @@ src/
 │       └── DocxUploader.tsx     # Drag-and-drop file upload
 │
 ├── lib/
+│   ├── actions/
+│   │   └── summarize.ts           # Server Action for AI summary
 │   ├── services/
 │   │   ├── documentParser.ts      # DOCX → JSON (hidden SuperDoc)
 │   │   ├── documentDiffer.ts      # Character-level diff algorithm
 │   │   ├── mergeDocuments.ts      # Apply track changes to document
 │   │   ├── trackChangeInjector.ts # Create track change marks
 │   │   ├── exportPreparation.ts   # Fix SuperDoc export limitations
+│   │   ├── changeContextExtractor.ts  # Extract enriched changes for AI
+│   │   ├── groqService.ts         # Groq LLM API wrapper
 │   │   └── index.ts               # Barrel export
 │   └── types/
 │       ├── diff.types.ts          # Diff-related types
-│       └── document.types.ts      # Document model types
+│       ├── document.types.ts      # Document model types
+│       └── summary.types.ts       # AI summary types
 │
 └── store/
     └── document-store.ts    # Zustand state management
@@ -87,6 +92,9 @@ src/
 | `documentDiffer.ts` | Performs character-level diff using diff-match-patch |
 | `mergeDocuments.ts` | Clones V1 and injects track change marks based on diff |
 | `exportPreparation.ts` | Fixes SuperDoc export issues (comments, format changes) |
+| `summarize.ts` | Server Action for AI summary (secure, no public endpoint) |
+| `changeContextExtractor.ts` | Extracts changes with semantic context for LLM |
+| `groqService.ts` | Groq API wrapper with retries and fault-tolerant parsing |
 
 ## Data Flow
 
@@ -94,7 +102,8 @@ src/
 2. **Upload V2** → `parseDocx()` extracts JSON → `diffDocuments()` finds changes
 3. **Merge** → `mergeDocuments()` creates JSON with track marks
 4. **Display** → `SuperDocViewer` renders merged document in review mode
-5. **Export** → `ExportPreparation` fixes issues → `editor.exportDocx()` → download
+5. **AI Summary** → `extractEnrichedChanges()` → `summarizeChanges()` Server Action → display bullets
+6. **Export** → `ExportPreparation` fixes issues → `editor.exportDocx()` → download
 
 ## UI Components
 
@@ -107,9 +116,11 @@ src/
 │ │ 📄 Original: file.docx → Compared with: file-v2.docx        │ │  ← File info row
 │ └─────────────────────────────────────────────────────────────┘ │
 ├─────────────────────────────────────────────────────────────────┤
-│ Notification Card (dismissible)                                 │
+│ Notification Card (dismissible) - AI Summary                    │
 │ ┌─────────────────────────────────────────────────────────────┐ │
-│ │ ✓ Changes detected: 3 insertions, 2 deletions          [×]  │ │
+│ │ Main changes detected:                                 [×]  │ │
+│ │ • replaced company name 'Okidoki' with 'Superdoc' in Client │ │
+│ │ • emphasized 'Chile' with bold in provider's address        │ │
 │ └─────────────────────────────────────────────────────────────┘ │
 ├─────────────────────────────────────────────────────────────────┤
 │ SuperDocViewer (with toolbar)                                   │
@@ -140,13 +151,83 @@ SuperDoc uses ProseMirror marks for track changes:
 { type: 'trackFormat', attrs: { id, author, date, before, after } }
 ```
 
+## AI Summary
+
+The AI summary transforms raw track changes into human-readable descriptions.
+
+### How changeContextExtractor Works
+
+```
+mergedJson (with track marks)
+         │
+         ▼
+┌─────────────────────────────────────────────────────┐
+│  traverseDocument()                                 │
+│  - Walks the ProseMirror tree recursively          │
+│  - Tracks current section (last heading text)      │
+│  - Extracts full paragraph text for context        │
+└─────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────┐
+│  For each text node with track mark:               │
+│  - Extract changed text                            │
+│  - Find surrounding sentence (splits by . ; ! ?)   │
+│  - Build location info (section name, node type)   │
+│  - Create EnrichedChange object                    │
+└─────────────────────────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────────────────────┐
+│  groupReplacements()                               │
+│  - Combines adjacent delete+insert → replacement   │
+└─────────────────────────────────────────────────────┘
+         │
+         ▼
+EnrichedChange[] → sent to LLM for summarization
+```
+
+### EnrichedChange Structure
+
+```typescript
+{
+  type: 'replacement',           // or 'insertion', 'deletion', 'format'
+  oldText: 'Okidoki SpA',        // For replacements
+  newText: 'Superdoc Inc',
+  surroundingText: 'El cliente Okidoki SpA, RUT 12.345.678-9...',  // Context!
+  location: {
+    sectionTitle: 'Identificación de las partes',
+    nodeType: 'paragraph',
+    description: '"Identificación de las partes" section'
+  }
+}
+```
+
+The `surroundingText` is key - it allows the LLM to understand that "4 → 6" is part of a serial number, not just random digits.
+
+### Security: Server Action
+
+The AI summary uses a **Server Action** instead of an API route:
+
+```typescript
+// src/lib/actions/summarize.ts
+'use server';
+
+export async function summarizeChanges(changes: EnrichedChange[]): Promise<SummaryBullet[]> {
+  // Called directly from frontend - no public /api/... endpoint
+}
+```
+
+This means external callers (curl, Postman) cannot access the summarization.
+
 ## Configuration
 
 ### Environment Variables
 
-| Variable | Purpose |
-|----------|---------|
-| `NEXT_PUBLIC_BASE_URL` | Base URL for SEO metadata |
+| Variable | Required | Purpose |
+|----------|----------|---------|
+| `GROQ_API_KEY` | Optional | Enables AI-powered change summaries |
+| `NEXT_PUBLIC_BASE_URL` | Optional | Base URL for SEO metadata |
 
 ### Author Settings
 
