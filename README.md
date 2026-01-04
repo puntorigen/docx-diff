@@ -82,7 +82,7 @@ The application uses a **"Merge and Mark"** approach:
 5. **Display**: The merged document is loaded into SuperDoc in "review" mode, showing:
    - Deletions: Red strikethrough
    - Insertions: Green underline
-   - Format changes: Yellow highlight with dashed underline
+   - Format changes: Yellow highlight (custom CSS, default is minimal)
 
 6. **Review**: Users can accept or reject individual changes via SuperDoc's native bubble UI
 

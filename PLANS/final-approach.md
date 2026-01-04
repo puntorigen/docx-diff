@@ -61,7 +61,7 @@ The solution uses a **"Merge and Mark"** approach:
 │   │    SuperDoc (review mode)              │   Display with            │
 │   │    - Red strikethrough = deletions     │   visual styling          │
 │   │    - Green underline = insertions      │                           │
-│   │    - Yellow highlight = format changes │                           │
+│   │    - Gold underline = format changes*  │                           │
 │   └────────────────────────────────────────┘                           │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -783,9 +783,11 @@ const superdoc = new SuperDoc({
 
 | Mode | Insertions | Deletions | Format Changes |
 |------|------------|-----------|----------------|
-| `review` | Green underline | Red strikethrough | Yellow highlight |
+| `review` | Green underline | Red strikethrough | Gold underline (when selected)* |
 | `original` | Hidden | Visible (no style) | Shows original |
 | `final` | Visible (no style) | Hidden | Shows new format |
+
+> *SuperDoc's default `trackFormat` styling is minimal (gold underline only when highlighted). We added custom CSS for better visibility - see "Custom Format Change Styling" below.
 
 ---
 
@@ -806,6 +808,31 @@ editor.commands.rejectAllTrackedChanges();
 editor.commands.acceptTrackedChangeById(changeId);
 editor.commands.rejectTrackedChangeById(changeId);
 ```
+
+---
+
+## Step 7: Custom Format Change Styling (Optional)
+
+SuperDoc's default styling for `trackFormat` is minimal (gold underline only when selected). To make format changes always visible, add custom CSS:
+
+```css
+/* globals.css - Custom format change styling */
+
+/* Format changes - yellow highlight with dashed underline */
+[data-track-format],
+.track-format,
+span[data-type="trackFormat"],
+.ProseMirror span.trackFormat {
+  background-color: #fef9c3 !important;  /* Light yellow */
+  border-bottom: 2px dashed #ca8a04 !important;  /* Amber dashed underline */
+}
+
+.sd-track-format {
+  background-color: #fef9c3 !important;
+}
+```
+
+This makes format changes visually distinct from insertions (green) and deletions (red).
 
 ---
 

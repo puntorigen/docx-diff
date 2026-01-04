@@ -21,7 +21,7 @@ export function Header({
   onReset,
 }: HeaderProps) {
   return (
-    <header className="bg-white border-b border-gray-200 px-6 py-4">
+    <header className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
       <div className="flex items-center justify-between">
         {/* Logo and title */}
         <div className="flex items-center gap-3">
@@ -37,10 +37,10 @@ export function Header({
 
         {/* Actions */}
         <div className="flex items-center gap-3">
-          {showDownloadButton && onDownload && (
+          {onReset && (
             <button
-              onClick={onDownload}
-              className="inline-flex items-center px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-colors"
+              onClick={onReset}
+              className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
             >
               <svg
                 className="w-4 h-4 mr-2"
@@ -52,10 +52,10 @@ export function Header({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth="2"
-                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
                 />
               </svg>
-              Download DOCX
+              Start over
             </button>
           )}
 
@@ -81,10 +81,10 @@ export function Header({
             </button>
           )}
 
-          {onReset && (
+          {showDownloadButton && onDownload && (
             <button
-              onClick={onReset}
-              className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
+              onClick={onDownload}
+              className="inline-flex items-center px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-colors"
             >
               <svg
                 className="w-4 h-4 mr-2"
@@ -96,10 +96,10 @@ export function Header({
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth="2"
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
                 />
               </svg>
-              Start over
+              Download DOCX
             </button>
           )}
         </div>

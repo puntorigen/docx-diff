@@ -32,7 +32,7 @@ interface ComparisonState {
 
 /**
  * Document Viewer Component for the merged document.
- * Loads JSON content directly into SuperDoc.
+ * Loads JSON content directly into SuperDoc with toolbar.
  */
 function MergedDocumentViewer({
   file,
@@ -46,22 +46,28 @@ function MergedDocumentViewer({
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const superdocRef = useRef<SuperDocInstance | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
 
+  // Generate unique IDs for this instance
+  const instanceId = useRef(`merged-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+  const editorId = `superdoc-editor-${instanceId.current}`;
+  const toolbarId = `superdoc-toolbar-${instanceId.current}`;
+
   // Initialize SuperDoc when file or mergedJson changes
   const initRef = useRef(false);
 
   const initialize = useCallback(async () => {
-    if (initRef.current || !containerRef.current || !mountedRef.current) return;
+    if (initRef.current || !containerRef.current || !toolbarRef.current || !mountedRef.current) return;
     initRef.current = true;
 
     // Small delay to let React settle
     await new Promise(resolve => setTimeout(resolve, 100));
     
-    if (!mountedRef.current || !containerRef.current) {
+    if (!mountedRef.current || !containerRef.current || !toolbarRef.current) {
       initRef.current = false;
       return;
     }
@@ -79,23 +85,21 @@ function MergedDocumentViewer({
       superdocRef.current = null;
     }
 
-    // Create fresh container
-    const innerContainer = document.createElement('div');
-    innerContainer.style.width = '100%';
-    innerContainer.style.height = '100%';
-    containerRef.current.innerHTML = '';
-    containerRef.current.appendChild(innerContainer);
+    // Set IDs directly on the ref elements (this is how SuperDoc expects it)
+    containerRef.current.id = editorId;
+    toolbarRef.current.id = toolbarId;
 
     try {
       const { SuperDoc } = await import('superdoc');
       await import('superdoc/style.css');
 
       const superdoc = new SuperDoc({
-        selector: innerContainer,
+        selector: `#${editorId}`,
+        toolbar: `#${toolbarId}`,
         document: file,
         documentMode: 'editing', // Editing mode allows accepting/rejecting changes
         role: 'editor', // Editor role has permission to accept changes
-        rulers: false,
+        rulers: true, // Show rulers for better document editing
         user: {
           name: 'Comparison Viewer',
           email: 'viewer@comparison.local',
@@ -120,9 +124,6 @@ function MergedDocumentViewer({
           // If we have merged JSON, set it as the content
           if (mergedJson && sd?.activeEditor) {
             try {
-              console.log('Setting merged content...');
-              console.log('Available commands:', Object.keys(sd.activeEditor.commands || {}));
-              
               const editor = sd.activeEditor;
               
               // Try different methods to set content
@@ -134,39 +135,21 @@ function MergedDocumentViewer({
                 // Use ProseMirror's replaceWith directly
                 const { state, view } = editor;
                 if (state?.doc && view && mergedJson.content) {
-                  console.log('Using ProseMirror transaction to replace content');
-                  // Create nodes from JSON
                   const newDoc = state.schema.nodeFromJSON(mergedJson);
                   const tr = state.tr.replaceWith(0, state.doc.content.size, newDoc.content);
                   view.dispatch(tr);
-                  console.log('Content replaced via transaction');
-                } else {
-                  console.warn('Could not find a way to set content - state.doc:', !!state?.doc, 'view:', !!view);
                 }
               }
-              
-              console.log('Merged content set successfully');
 
               // Enable track changes REVIEW mode to show both insertions and deletions visually
-              // 'review' mode shows: strikethrough for deletions, highlighting for insertions
               if (sd.setTrackedChangesPreferences) {
                 sd.setTrackedChangesPreferences({
-                  mode: 'review',  // 'review' shows both, 'original' hides insertions, 'final' hides deletions
+                  mode: 'review',
                   enabled: true
                 });
-                console.log('Track changes set to REVIEW mode');
               } else if (editor.commands?.enableTrackChanges) {
                 editor.commands.enableTrackChanges();
-                console.log('Track changes enabled via command');
               }
-
-              // Log available track change related methods for debugging
-              console.log('Track change commands available:', {
-                acceptAll: !!editor.commands?.acceptAllTrackedChanges,
-                rejectAll: !!editor.commands?.rejectAllTrackedChanges,
-                acceptById: !!editor.commands?.acceptTrackedChangeById,
-                rejectById: !!editor.commands?.rejectTrackedChangeById,
-              });
 
             } catch (err) {
               console.error('Failed to set merged content:', err);
@@ -265,10 +248,16 @@ function MergedDocumentViewer({
         </div>
       )}
 
-      {/* Document container */}
+      {/* Toolbar - SuperDoc will populate this */}
+      <div
+        ref={toolbarRef}
+        className="border-b border-gray-200 bg-gray-50 flex-shrink-0"
+      />
+
+      {/* Editor Container - fills remaining space */}
       <div
         ref={containerRef}
-        className="w-full flex-1 min-h-[600px] bg-gray-100"
+        className="flex-1 min-h-0 overflow-auto"
       />
     </div>
   );
@@ -276,6 +265,7 @@ function MergedDocumentViewer({
 
 /**
  * Simple Document Viewer (for V1 before comparison).
+ * Also includes toolbar for editing.
  */
 function SimpleDocumentViewer({
   file,
@@ -287,34 +277,39 @@ function SimpleDocumentViewer({
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
   const superdocRef = useRef<SuperDocInstance | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const initRef = useRef(false);
 
+  // Generate unique IDs for this instance
+  const instanceId = useRef(`simple-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
+  const editorId = `superdoc-editor-${instanceId.current}`;
+  const toolbarId = `superdoc-toolbar-${instanceId.current}`;
+
   const initialize = useCallback(async () => {
-    if (initRef.current || !containerRef.current) return;
+    if (initRef.current || !containerRef.current || !toolbarRef.current) return;
     initRef.current = true;
 
     setIsLoading(true);
     setError(null);
 
-    // Create fresh container
-    const innerContainer = document.createElement('div');
-    innerContainer.style.width = '100%';
-    innerContainer.style.height = '100%';
-    containerRef.current.innerHTML = '';
-    containerRef.current.appendChild(innerContainer);
+    // Set IDs directly on the ref elements (this is how SuperDoc expects it)
+    containerRef.current.id = editorId;
+    toolbarRef.current.id = toolbarId;
 
     try {
       const { SuperDoc } = await import('superdoc');
       await import('superdoc/style.css');
 
       const superdoc = new SuperDoc({
-        selector: innerContainer,
+        selector: `#${editorId}`,
+        toolbar: `#${toolbarId}`,
         document: file,
-        documentMode: 'viewing',
-        rulers: false,
+        documentMode: 'editing', // Allow editing
+        role: 'editor',
+        rulers: false, // No rulers for simpler view
         user: {
           name: 'Document Viewer',
           email: 'viewer@comparison.local',
@@ -354,7 +349,7 @@ function SimpleDocumentViewer({
   }, [initialize]);
 
   return (
-    <div className={`relative ${className}`}>
+    <div className={`relative flex flex-col ${className}`}>
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80 z-10">
           <div className="flex flex-col items-center">
@@ -373,9 +368,16 @@ function SimpleDocumentViewer({
         </div>
       )}
 
+      {/* Toolbar - SuperDoc will populate this */}
+      <div
+        ref={toolbarRef}
+        className="border-b border-gray-200 bg-gray-50 flex-shrink-0"
+      />
+
+      {/* Editor Container - fills remaining space */}
       <div
         ref={containerRef}
-        className="w-full h-full min-h-[600px] bg-gray-100"
+        className="flex-1 min-h-0 overflow-auto"
       />
     </div>
   );
@@ -398,6 +400,7 @@ export default function Home() {
   } = useDocumentStore();
 
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [showChangeSummary, setShowChangeSummary] = useState(true); // Show summary card by default after comparison
   const [comparison, setComparison] = useState<ComparisonState>({
     v1Json: null,
     v2Json: null,
@@ -531,6 +534,7 @@ export default function Home() {
         };
 
         setChangeSet(changeSetData);
+        setShowChangeSummary(true); // Show the summary card for new comparison
         setStage('result');
       } catch (err) {
         console.error('Comparison failed:', err);
@@ -552,7 +556,7 @@ export default function Home() {
   }, [reset]);
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       {/* Header */}
       <Header
         showUploadButton={stage === 'viewing' || stage === 'result'}
@@ -562,8 +566,8 @@ export default function Home() {
         onReset={stage !== 'upload' ? handleReset : undefined}
       />
 
-      {/* Main content */}
-      <main className="flex-1 flex">
+      {/* Main content - fills remaining viewport height */}
+      <main className="flex-1 flex min-h-0">
         {/* Upload stage */}
         {stage === 'upload' && (
           <div className="flex-1 flex items-center justify-center p-8">
@@ -577,13 +581,13 @@ export default function Home() {
 
         {/* Viewing stage - show V1 document */}
         {stage === 'viewing' && v1File && (
-          <div className="flex-1 flex">
-            <div className="flex-1 flex flex-col">
+          <div className="flex-1 flex min-h-0">
+            <div className="flex-1 flex flex-col min-h-0">
               <SimpleDocumentViewer
                 key={v1File.name + v1File.lastModified}
                 file={v1File}
                 onReady={handleV1JsonReady}
-                className="flex-1"
+                className="flex-1 min-h-0"
               />
             </div>
           </div>
@@ -601,25 +605,67 @@ export default function Home() {
 
         {/* Result stage - show merged document with track changes */}
         {stage === 'result' && v1File && (
-          <div className="flex-1 flex">
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* Change summary notification card - dismissible */}
+            {changeSet && showChangeSummary && (
+              <div className="mx-4 mt-4 mb-2 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl shadow-sm flex-shrink-0">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0 w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                      <span className="text-lg">✨</span>
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-gray-900 mb-1">
+                        Changes detected in new version
+                      </h3>
+                      <div className="text-sm text-gray-600 space-y-1">
+                        {changeSet.summary.totalChanges > 0 ? (
+                          <>
+                            <p>
+                              Found <span className="font-medium text-blue-600">{changeSet.summary.totalChanges} change{changeSet.summary.totalChanges !== 1 ? 's' : ''}</span>
+                              {changeSet.summary.insertions > 0 && (
+                                <span className="text-green-600"> • {changeSet.summary.insertions} insertion{changeSet.summary.insertions !== 1 ? 's' : ''}</span>
+                              )}
+                              {changeSet.summary.deletions > 0 && (
+                                <span className="text-red-600"> • {changeSet.summary.deletions} deletion{changeSet.summary.deletions !== 1 ? 's' : ''}</span>
+                              )}
+                              {changeSet.summary.formatChanges > 0 && (
+                                <span className="text-amber-600"> • {changeSet.summary.formatChanges} format change{changeSet.summary.formatChanges !== 1 ? 's' : ''}</span>
+                              )}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              Use the track change bubbles in the document to accept or reject each change.
+                            </p>
+                          </>
+                        ) : (
+                          <p>No changes detected between the two versions.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowChangeSummary(false)}
+                    className="flex-shrink-0 p-1 hover:bg-blue-100 rounded-lg transition-colors"
+                    title="Dismiss"
+                  >
+                    <svg className="w-5 h-5 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Document viewer with merged content */}
-            <div className="flex-1 flex flex-col">
+            <div className="flex-1 flex flex-col min-h-0 mx-4 mb-4">
               <MergedDocumentViewer
                 key={`merged-${v1File.name}`}
                 file={v1File}
                 mergedJson={comparison.mergedJson}
                 onSuperdocReady={(sd) => { activeSuperdocRef.current = sd; }}
-                className="flex-1"
+                className="flex-1 min-h-0 rounded-lg overflow-hidden border border-gray-200 shadow-sm"
               />
-
-              {/* Summary panel (bottom) */}
-              {changeSet && (
-                <div className="p-4 bg-gray-50 border-t border-gray-200">
-                  <ChangeSummary summary={changeSet.summary} />
-                </div>
-              )}
             </div>
-
           </div>
         )}
 
