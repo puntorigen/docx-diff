@@ -4,10 +4,11 @@
  * based on character-level diff segments.
  */
 
-import type { DiffResult, DiffSegment } from './documentDiffer';
+import type { DiffResult, FormatChange } from './documentDiffer';
 import {
   createTrackInsertMark,
   createTrackDeleteMark,
+  createTrackFormatMark,
   type TrackChangeAuthor,
 } from './trackChangeInjector';
 
@@ -82,7 +83,7 @@ export function mergeDocuments(
   diffResult: DiffResult,
   author: TrackChangeAuthor = DEFAULT_AUTHOR
 ): ProseMirrorNode {
-  console.log(`Merging with ${diffResult.segments.length} segments`);
+  console.log(`Merging with ${diffResult.segments.length} segments, ${diffResult.formatChanges?.length || 0} format changes`);
 
   // Clone the original document
   const merged = cloneNode(docA);
@@ -100,6 +101,19 @@ export function mergeDocuments(
   
   const charStates: CharState[] = [];
   let insertions: { afterOffset: number; text: string }[] = [];
+  
+  // Store format changes as array for range lookups
+  const formatChanges: FormatChange[] = diffResult.formatChanges || [];
+  
+  // Helper to find format change at a position
+  function getFormatChangeAt(pos: number): FormatChange | null {
+    for (const fc of formatChanges) {
+      if (pos >= fc.from && pos < fc.to) {
+        return fc;
+      }
+    }
+    return null;
+  }
   
   let docAOffset = 0;
   for (const segment of diffResult.segments) {
@@ -125,7 +139,7 @@ export function mergeDocuments(
     }
   }
 
-  console.log(`Character states mapped: ${charStates.length} chars, ${insertions.length} insertions`);
+  console.log(`Character states mapped: ${charStates.length} chars, ${insertions.length} insertions, ${formatChanges.length} format changes`);
 
   // Now we need to transform the document
   // For each text span in the original:
@@ -157,23 +171,37 @@ export function mergeDocuments(
           });
         }
 
-        // Find run of same state
+        // Find run of same state AND same format change status
+        const currentFormatChange = getFormatChangeAt(nodeOffset + i);
         let j = i + 1;
         while (j < text.length) {
           const nextState = charStates[nodeOffset + j] || { type: 'equal' };
           if (nextState.type !== charState.type) break;
           // Also break if there's an insertion point here
           if (insertions.some(ins => ins.afterOffset === nodeOffset + j)) break;
+          // Break if format change status changes
+          const nextFormatChange = getFormatChangeAt(nodeOffset + j);
+          if (currentFormatChange !== nextFormatChange) break;
           j++;
         }
 
         const chunk = text.substring(i, j);
-        const marks = [...(node.marks || [])];
+        let marks = [...(node.marks || [])];
 
         if (charState.type === 'delete') {
           marks.push(createTrackDeleteMark(author));
+        } else if (charState.type === 'equal') {
+          // Check if there's a format change at this position
+          if (currentFormatChange) {
+            // For format changes, use the NEW marks (after) plus trackFormat
+            console.log(`Applying trackFormat mark at pos ${nodeOffset + i} for text "${chunk}"`);
+            console.log(`  Before marks: ${JSON.stringify(currentFormatChange.before.map((m: any) => m.type))}`);
+            console.log(`  After marks: ${JSON.stringify(currentFormatChange.after.map((m: any) => m.type))}`);
+            
+            // Replace old marks with new marks, then add trackFormat
+            marks = [...currentFormatChange.after, createTrackFormatMark(currentFormatChange.before, currentFormatChange.after, author)];
+          }
         }
-        // 'equal' keeps original marks only
 
         result.push({
           type: 'text',

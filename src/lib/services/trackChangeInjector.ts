@@ -66,6 +66,7 @@ export function createTrackFormatMark(
       id: uuidv4(),
       author: author.name,
       authorEmail: author.email,
+      authorImage: '',
       date: new Date().toISOString(),
       before,
       after,

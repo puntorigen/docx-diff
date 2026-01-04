@@ -101,26 +101,18 @@ function MergedDocumentViewer({
           email: 'viewer@comparison.local',
         },
         // Allow accepting/rejecting changes from any author (including our 'Comparison Tool')
-        permissionResolver: ({ permission, defaultDecision }: { permission: string; defaultDecision: boolean }) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        permissionResolver: ({ permission }: any) => {
           // Allow all track change operations
-          if (permission === 'RESOLVE_OTHER' || 
-              permission === 'accept-change' || 
-              permission === 'reject-change') {
+          // RESOLVE_OWN/RESOLVE_OTHER are for accepting changes
+          // REJECT_OWN/REJECT_OTHER are for rejecting changes
+          if (permission === 'RESOLVE_OWN' ||
+              permission === 'RESOLVE_OTHER' || 
+              permission === 'REJECT_OWN' ||
+              permission === 'REJECT_OTHER') {
             return true;
           }
-          return defaultDecision;
-        },
-        // Monitor track changes for debugging
-        onTrackedChangesUpdate: ({ editor }: { editor: any }) => {
-          try {
-            const changes = editor?.storage?.trackChanges?.all?.();
-            console.log('Track changes storage:', changes?.length || 0, 'changes');
-            if (changes && changes.length > 0) {
-              console.log('First change:', changes[0]);
-            }
-          } catch (e) {
-            console.log('Could not read track changes storage');
-          }
+          return undefined; // Use default decision
         },
         onReady: ({ superdoc: sd }: { superdoc: SuperDocInstance }) => {
           superdocRef.current = sd;
@@ -173,13 +165,8 @@ function MergedDocumentViewer({
                 acceptAll: !!editor.commands?.acceptAllTrackedChanges,
                 rejectAll: !!editor.commands?.rejectAllTrackedChanges,
                 acceptById: !!editor.commands?.acceptTrackedChangeById,
+                rejectById: !!editor.commands?.rejectTrackedChangeById,
               });
-              
-              // Store reference for external access (for view mode changes)
-              if (typeof window !== 'undefined') {
-                (window as any).__superdocEditor = editor;
-                (window as any).__superdocInstance = sd;
-              }
 
             } catch (err) {
               console.error('Failed to set merged content:', err);
@@ -517,19 +504,26 @@ export default function Home() {
             paragraphIndex: 0,
           }));
 
-        // Count insertions and deletions
+        // Count changes
         const insertions = diffResult.segments.filter((s) => s.type === 'insert').length;
         const deletions = diffResult.segments.filter((s) => s.type === 'delete').length;
+        const formatChangeCount = diffResult.formatChanges?.length || 0;
 
         const changeSetData = {
           textChanges,
-          formatChanges: [],
+          // Convert format changes to match ChangeSet interface
+          formatChanges: (diffResult.formatChanges || []).map((fc, idx) => ({
+            from: fc.from,
+            to: fc.to,
+            text: '', // Text is embedded in the merged document
+            paragraphIndex: idx,
+          })),
           paragraphChanges: [],
           summary: {
-            totalChanges: insertions + deletions,
+            totalChanges: insertions + deletions + formatChangeCount,
             insertions,
             deletions,
-            formatChanges: 0,
+            formatChanges: formatChangeCount,
             paragraphsAdded: 0,
             paragraphsRemoved: 0,
             highlights: diffResult.summary,
