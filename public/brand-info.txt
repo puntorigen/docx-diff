@@ -1,0 +1,18 @@
+# DocX Diff Brand Guidelines
+
+## Product Vision
+A docx online comparission tool that allows a user to check the differences between 2 docx files online, and accept one or more changes visually, 100% compatible with MS Word.
+
+## Color Palette
+#007ACC
+#005B9C
+#E8F0F8
+
+## Theme Colors
+- Primary: #007ACC
+- Secondary: #005B9C
+- Accent: #E8F0F8
+
+## Typography
+- Primary (Headings): Roboto (700)
+- Secondary (Body): Open Sans (400)

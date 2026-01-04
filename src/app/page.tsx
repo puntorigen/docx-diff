@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * DOCX Comparison Engine - Main Page
+ * DocX Diff - Main Page
  * Uses "Merge and Mark" approach: builds a merged document with track change marks.
  */
 
@@ -101,10 +101,10 @@ function MergedDocumentViewer({
         role: 'editor', // Editor role has permission to accept changes
         rulers: true, // Show rulers for better document editing
         user: {
-          name: 'Comparison Viewer',
+          name: 'DocX Diff',
           email: 'viewer@comparison.local',
         },
-        // Allow accepting/rejecting changes from any author (including our 'Comparison Tool')
+        // Allow accepting/rejecting changes from any author (including our 'DocX Diff')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         permissionResolver: ({ permission }: any) => {
           // Allow all track change operations
@@ -597,7 +597,7 @@ export default function Home() {
         {stage === 'comparing' && (
           <div className="flex-1 flex items-center justify-center">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4" style={{ borderColor: '#007ACC' }}></div>
               <p className="text-gray-600">Comparing documents...</p>
             </div>
           </div>
@@ -608,21 +608,21 @@ export default function Home() {
           <div className="flex-1 flex flex-col min-h-0">
             {/* Change summary notification card - dismissible */}
             {changeSet && showChangeSummary && (
-              <div className="mx-4 mt-4 mb-2 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl shadow-sm flex-shrink-0">
+              <div className="mx-4 mt-4 mb-2 p-4 rounded-xl shadow-sm flex-shrink-0" style={{ backgroundColor: '#E8F0F8', border: '1px solid #007ACC' }}>
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0 w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
-                      <span className="text-lg">✨</span>
+                    <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: '#007ACC' }}>
+                      <span className="text-lg text-white">✓</span>
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900 mb-1">
+                      <h3 className="font-semibold mb-1" style={{ color: '#005B9C' }}>
                         Changes detected in new version
                       </h3>
                       <div className="text-sm text-gray-600 space-y-1">
                         {changeSet.summary.totalChanges > 0 ? (
                           <>
                             <p>
-                              Found <span className="font-medium text-blue-600">{changeSet.summary.totalChanges} change{changeSet.summary.totalChanges !== 1 ? 's' : ''}</span>
+                              Found <span className="font-medium" style={{ color: '#007ACC' }}>{changeSet.summary.totalChanges} change{changeSet.summary.totalChanges !== 1 ? 's' : ''}</span>
                               {changeSet.summary.insertions > 0 && (
                                 <span className="text-green-600"> • {changeSet.summary.insertions} insertion{changeSet.summary.insertions !== 1 ? 's' : ''}</span>
                               )}
@@ -645,10 +645,11 @@ export default function Home() {
                   </div>
                   <button
                     onClick={() => setShowChangeSummary(false)}
-                    className="flex-shrink-0 p-1 hover:bg-blue-100 rounded-lg transition-colors"
+                    className="flex-shrink-0 p-1.5 rounded-lg transition-opacity hover:opacity-70"
+                    style={{ backgroundColor: '#007ACC' }}
                     title="Dismiss"
                   >
-                    <svg className="w-5 h-5 text-gray-400 hover:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
@@ -701,12 +702,13 @@ export default function Home() {
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-xl p-6 shadow-xl max-w-lg w-full mx-4">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900">
+                <h2 className="text-lg font-semibold" style={{ color: '#005B9C' }}>
                   Upload new version
                 </h2>
                 <button
                   onClick={() => setShowUploadModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
+                  className="p-1 rounded hover:opacity-70 transition-opacity"
+                  style={{ color: '#007ACC' }}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
