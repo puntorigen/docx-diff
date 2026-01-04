@@ -23,7 +23,7 @@
 
 ---
 
-## 📸 Preview
+## Preview
 
 <p align="center">
   <img src="docx-diff.gif" alt="DocX Diff Demo" width="800" />
@@ -31,7 +31,7 @@
 
 ---
 
-## ✨ Features
+## Features
 
 - 📄 **Upload & Compare** – Drop two DOCX files and see differences instantly
 - 🔍 **Track Changes** – Insertions (green), deletions (red), format changes (yellow)
@@ -44,7 +44,7 @@
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 npm install
@@ -62,7 +62,7 @@ docker run -p 3000:3000 docxdiff
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Next.js 16** – App Router
 - **SuperDoc** – Document editor ([superdoc.dev](https://superdoc.dev))
@@ -80,7 +80,7 @@ docker run -p 3000:3000 docxdiff
 
 ---
 
-## 📖 Documentation
+## Documentation
 
 | Document | Description |
 |----------|-------------|
@@ -90,6 +90,6 @@ docker run -p 3000:3000 docxdiff
 
 ---
 
-## 📄 License
+## License
 
 MIT © [Pablo Schaffner](https://pabloschaffner.com)
