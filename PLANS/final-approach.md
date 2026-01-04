@@ -52,8 +52,8 @@ The solution uses a **"Merge and Mark"** approach:
 │                        │                                                │
 │                        ▼                                                │
 │   ┌────────────────────────────────────────┐                           │
-│   │     Merged JSON with trackInsert       │                           │
-│   │     and trackDelete marks              │                           │
+│   │     Merged JSON with trackInsert,      │                           │
+│   │     trackDelete, and trackFormat marks │                           │
 │   └────────────────────┬───────────────────┘                           │
 │                        │                                                │
 │                        ▼                                                │
@@ -61,6 +61,7 @@ The solution uses a **"Merge and Mark"** approach:
 │   │    SuperDoc (review mode)              │   Display with            │
 │   │    - Red strikethrough = deletions     │   visual styling          │
 │   │    - Green underline = insertions      │                           │
+│   │    - Yellow highlight = format changes │                           │
 │   └────────────────────────────────────────┘                           │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -71,12 +72,18 @@ The solution uses a **"Merge and Mark"** approach:
 ```json
 {
   "dependencies": {
-    "superdoc": "^x.x.x",
     "diff-match-patch": "^1.0.5",
-    "uuid": "^9.0.0"
+    "next": "16.1.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "superdoc": "^1.1.3",
+    "uuid": "^13.0.0",
+    "zustand": "^5.0.9"
   }
 }
 ```
+
+> **Note**: SuperDoc includes TipTap and ProseMirror internally - no need to install `@tiptap/core`, `prosemirror-model`, or `prosemirror-state` separately.
 
 ## File Structure
 
@@ -224,11 +231,19 @@ export interface DiffSegment {
   text: string;
 }
 
+export interface FormatChange {
+  from: number;        // Start position in docA text
+  to: number;          // End position in docA text
+  before: any[];       // Marks from V1
+  after: any[];        // Marks from V2
+}
+
 export interface DiffResult {
   segments: DiffSegment[];
   textA: string;
   textB: string;
   summary: string[];
+  formatChanges: FormatChange[];  // Format-only changes (same text, different marks)
 }
 
 /**
@@ -280,15 +295,77 @@ export function diffDocuments(
     }
   }
 
+  // Detect format changes in 'equal' segments
+  // (text is same, but formatting marks differ)
+  const formatChanges = detectFormatChanges(docA, docB, segments, textA);
+
   // Build summary
   const summary: string[] = [];
   if (insertCount > 0) summary.push(`${insertCount} insertion(s)`);
   if (deleteCount > 0) summary.push(`${deleteCount} deletion(s)`);
-  if (insertCount === 0 && deleteCount === 0) {
-    summary.push('No text changes detected');
+  if (formatChanges.length > 0) summary.push(`${formatChanges.length} format change(s)`);
+  if (insertCount === 0 && deleteCount === 0 && formatChanges.length === 0) {
+    summary.push('No changes detected');
   }
 
-  return { segments, textA, textB, summary };
+  return { segments, textA, textB, summary, formatChanges };
+}
+
+/**
+ * Detect format changes in 'equal' text segments.
+ * Format changes occur when text is identical but marks differ.
+ */
+function detectFormatChanges(
+  docA: ProseMirrorJSON, 
+  docB: ProseMirrorJSON, 
+  segments: DiffSegment[],
+  textA: string
+): FormatChange[] {
+  // Extract text spans with their marks from both documents
+  const spansA = extractTextSpans(docA);
+  const spansB = extractTextSpans(docB);
+  
+  const formatChanges: FormatChange[] = [];
+  let posA = 0;
+  let posB = 0;
+  
+  for (const segment of segments) {
+    if (segment.type === 'equal') {
+      // For equal text, compare marks character by character
+      for (let i = 0; i < segment.text.length; i++) {
+        const marksA = getMarksAtPosition(spansA, posA);
+        const marksB = getMarksAtPosition(spansB, posB);
+        
+        if (!marksEqual(marksA, marksB)) {
+          // Found format change - extend to find full range
+          const startPos = posA;
+          let endPos = posA + 1;
+          
+          // Group consecutive format changes
+          while (i + 1 < segment.text.length) {
+            const nextMarksA = getMarksAtPosition(spansA, posA + 1);
+            const nextMarksB = getMarksAtPosition(spansB, posB + 1);
+            if (marksEqual(nextMarksA, nextMarksB)) break;
+            i++; posA++; posB++; endPos++;
+          }
+          
+          formatChanges.push({
+            from: startPos,
+            to: endPos,
+            before: marksA,
+            after: marksB
+          });
+        }
+        posA++; posB++;
+      }
+    } else if (segment.type === 'delete') {
+      posA += segment.text.length;
+    } else if (segment.type === 'insert') {
+      posB += segment.text.length;
+    }
+  }
+  
+  return formatChanges;
 }
 ```
 
@@ -354,6 +431,7 @@ export function createTrackDeleteMark(author: TrackChangeAuthor = DEFAULT_AUTHOR
 
 /**
  * Create a trackFormat mark for formatting changes.
+ * The 'before' and 'after' arrays store the original and new marks.
  */
 export function createTrackFormatMark(
   before: any[],
@@ -366,9 +444,10 @@ export function createTrackFormatMark(
       id: uuidv4(),
       author: author.name,
       authorEmail: author.email,
+      authorImage: '',
       date: new Date().toISOString(),
-      before,
-      after,
+      before,  // Original formatting (V1)
+      after,   // New formatting (V2)
     },
   };
 }
@@ -383,7 +462,7 @@ interface TrackInsertMark {
     id: string;         // Unique ID (UUID)
     author: string;     // Author name
     authorEmail: string; // Author email
-    authorImage: string; // Author image URL (optional)
+    authorImage: string; // Author image URL (optional, can be '')
     date: string;       // ISO date string
   };
 }
@@ -397,6 +476,36 @@ interface TrackDeleteMark {
     authorImage: string;
     date: string;
   };
+}
+
+interface TrackFormatMark {
+  type: 'trackFormat';
+  attrs: {
+    id: string;
+    author: string;
+    authorEmail: string;
+    authorImage: string;
+    date: string;
+    before: any[];      // Array of marks from V1
+    after: any[];       // Array of marks from V2
+  };
+}
+```
+
+**Format Change Example:**
+```typescript
+// When "Chile" changes from normal to bold:
+{
+  type: 'trackFormat',
+  attrs: {
+    id: '550e8400-e29b-41d4-a716-446655440000',
+    author: 'Comparison Tool',
+    authorEmail: 'comparison@tool.local',
+    authorImage: '',
+    date: '2024-01-15T10:30:00.000Z',
+    before: [],                           // No marks (plain text)
+    after: [{ type: 'bold' }]            // Bold mark added
+  }
 }
 ```
 
@@ -628,14 +737,18 @@ const superdoc = new SuperDoc({
     email: 'reviewer@app.local',
   },
   
-  // Allow accepting/rejecting changes from any author
-  permissionResolver: ({ permission, defaultDecision }) => {
-    if (permission === 'RESOLVE_OTHER' || 
-        permission === 'accept-change' || 
-        permission === 'reject-change') {
+  // CRITICAL: Allow accepting AND rejecting changes from any author
+  // Without REJECT_OWN and REJECT_OTHER, the reject button won't work!
+  permissionResolver: ({ permission }: { permission: string }) => {
+    if (
+      permission === 'RESOLVE_OWN' ||    // Accept own changes
+      permission === 'RESOLVE_OTHER' ||  // Accept others' changes
+      permission === 'REJECT_OWN' ||     // Reject own changes
+      permission === 'REJECT_OTHER'      // Reject others' changes
+    ) {
       return true;
     }
-    return defaultDecision;
+    return undefined; // Use default decision for other permissions
   },
   
   onReady: ({ superdoc: sd }) => {
@@ -668,11 +781,11 @@ const superdoc = new SuperDoc({
 
 **Track Changes Modes:**
 
-| Mode | Insertions | Deletions |
-|------|------------|-----------|
-| `review` | Green underline | Red strikethrough |
-| `original` | Hidden | Visible (no style) |
-| `final` | Visible (no style) | Hidden |
+| Mode | Insertions | Deletions | Format Changes |
+|------|------------|-----------|----------------|
+| `review` | Green underline | Red strikethrough | Yellow highlight |
+| `original` | Hidden | Visible (no style) | Shows original |
+| `final` | Visible (no style) | Hidden | Shows new format |
 
 ---
 
@@ -741,13 +854,35 @@ async function compareDocuments(v1File: File, v2File: File) {
 
 ### Track changes not visible
 - Ensure `setTrackedChangesPreferences({ mode: 'review', enabled: true })`
-- Check that marks have correct `type` ('trackInsert', 'trackDelete')
+- Check that marks have correct `type` ('trackInsert', 'trackDelete', 'trackFormat')
 - Verify marks include all required `attrs` (id, author, authorEmail, date)
+- For `trackFormat`, also include `before` and `after` arrays
 
-### Cannot accept/reject changes
+### Cannot accept changes
 - Set `documentMode: 'editing'`
 - Set `role: 'editor'`
-- Add `permissionResolver` that returns `true` for track change permissions
+- Add `permissionResolver` that returns `true` for `RESOLVE_OWN` and `RESOLVE_OTHER`
+
+### Cannot REJECT changes (accept works but reject doesn't)
+This is a common gotcha! The reject button requires **separate permissions**:
+```typescript
+permissionResolver: ({ permission }) => {
+  if (
+    permission === 'RESOLVE_OWN' ||
+    permission === 'RESOLVE_OTHER' ||
+    permission === 'REJECT_OWN' ||    // <-- Required for reject!
+    permission === 'REJECT_OTHER'     // <-- Required for reject!
+  ) {
+    return true;
+  }
+  return undefined;
+},
+```
+
+### Format changes not detected
+- Format changes only occur when text is identical but marks differ
+- Ensure `extractTextSpans()` captures marks from the ProseMirror JSON
+- Check that format changes are being included in `formatChanges` array
 
 ### React StrictMode issues
 - Add 50ms delay before SuperDoc initialization

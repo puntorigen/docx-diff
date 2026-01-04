@@ -5,9 +5,11 @@ A web application that compares two versions of a DOCX document and displays the
 ## Features
 
 - **Upload & Compare**: Upload an original DOCX document, then upload a new version to see differences
-- **Track Changes**: Changes are displayed using SuperDoc's native tracked changes (insertions, deletions)
-- **Accept/Reject**: Review individual changes and accept or reject them
+- **Track Changes**: Changes are displayed using SuperDoc's native tracked changes (insertions, deletions, format changes)
+- **Accept/Reject**: Review individual changes and accept or reject them via SuperDoc's bubble UI
+- **Format Change Detection**: Detects formatting changes even when text content is identical (e.g., bold, italic)
 - **Change Summary**: Get a summary of all changes with counts and highlights
+- **Download**: Export the document with tracked changes as DOCX
 - **Preserved Formatting**: Original document structure and formatting are maintained
 
 ## Tech Stack
@@ -52,15 +54,15 @@ src/
 ├── app/                    # Next.js App Router
 │   └── page.tsx           # Main page with comparison logic
 ├── components/
-│   ├── layout/            # Header component
-│   ├── results/           # ChangeSummary, ChangesSidebar
-│   └── upload/            # DocxUploader
+│   ├── layout/            # Header component (with download button)
+│   ├── results/           # ChangeSummary component
+│   └── upload/            # DocxUploader component
 ├── lib/
 │   ├── services/          # Core comparison services
 │   │   ├── documentParser.ts      # DOCX → ProseMirror JSON
-│   │   ├── documentDiffer.ts      # Character-level diffing
-│   │   ├── mergeDocuments.ts      # Applies track changes
-│   │   └── trackChangeInjector.ts # Creates track marks
+│   │   ├── documentDiffer.ts      # Character-level + format diffing
+│   │   ├── mergeDocuments.ts      # Applies track changes to document
+│   │   └── trackChangeInjector.ts # Creates trackInsert/Delete/Format marks
 │   └── types/             # TypeScript definitions
 └── store/                 # Zustand state management
 ```
@@ -73,13 +75,16 @@ The application uses a **"Merge and Mark"** approach:
 
 2. **Character-Level Diff**: Full text is extracted and compared using diff-match-patch, producing segments of `equal`, `insert`, and `delete` operations
 
-3. **Merge with Track Changes**: The original document structure is preserved while injecting `trackInsert` and `trackDelete` marks at the appropriate positions
+3. **Format Change Detection**: For `equal` text segments, marks (bold, italic, etc.) are compared to detect formatting-only changes
 
-4. **Display**: The merged document is loaded into SuperDoc in "review" mode, showing:
+4. **Merge with Track Changes**: The original document structure is preserved while injecting `trackInsert`, `trackDelete`, and `trackFormat` marks at appropriate positions
+
+5. **Display**: The merged document is loaded into SuperDoc in "review" mode, showing:
    - Deletions: Red strikethrough
    - Insertions: Green underline
+   - Format changes: Yellow highlight with dashed underline
 
-5. **Review**: Users can accept or reject individual changes via the sidebar
+6. **Review**: Users can accept or reject individual changes via SuperDoc's native bubble UI
 
 ## Key Implementation Details
 
@@ -89,12 +94,24 @@ The application uses a **"Merge and Mark"** approach:
 new SuperDoc({
   documentMode: 'editing',  // Enables accept/reject
   role: 'editor',          // Permission to modify
-  permissionResolver: () => true,  // Allow all operations
+  
+  // CRITICAL: Must include REJECT_OWN and REJECT_OTHER for reject to work!
+  permissionResolver: ({ permission }) => {
+    if (
+      permission === 'RESOLVE_OWN' ||    // Accept own changes
+      permission === 'RESOLVE_OTHER' ||  // Accept others' changes
+      permission === 'REJECT_OWN' ||     // Reject own changes  
+      permission === 'REJECT_OTHER'      // Reject others' changes
+    ) {
+      return true;
+    }
+    return undefined;
+  },
 });
 
 // Enable visual track changes
 superdoc.setTrackedChangesPreferences({
-  mode: 'review',  // Shows both insertions and deletions
+  mode: 'review',  // Shows insertions, deletions, and format changes
   enabled: true
 });
 ```
@@ -102,23 +119,17 @@ superdoc.setTrackedChangesPreferences({
 ### Track Change Marks
 
 ```typescript
-// Insertion mark
-{
-  type: 'trackInsert',
-  attrs: { id, author, authorEmail, date }
-}
+// Insertion mark (new text)
+{ type: 'trackInsert', attrs: { id, author, authorEmail, authorImage, date } }
 
-// Deletion mark
-{
-  type: 'trackDelete',
-  attrs: { id, author, authorEmail, date }
-}
+// Deletion mark (removed text)
+{ type: 'trackDelete', attrs: { id, author, authorEmail, authorImage, date } }
+
+// Format mark (formatting change)
+{ type: 'trackFormat', attrs: { id, author, authorEmail, authorImage, date, before, after } }
 ```
 
 ## Documentation
 
 See `PLANS/final-approach.md` for a detailed technical guide that can be used to rebuild this solution in other projects.
 
-## License
-
-This project was created as a take-home assignment for SuperDoc.
