@@ -25,9 +25,8 @@
 
 ## 📸 Preview
 
-<!-- Replace with your recorded GIF -->
 <p align="center">
-  <img src="docs/demo.gif" alt="DocX Diff Demo" width="800" />
+  <img src="docx-diff.gif" alt="DocX Diff Demo" width="800" />
 </p>
 
 ---
