@@ -88,12 +88,28 @@ The solution uses a **"Merge and Mark"** approach:
 ## File Structure
 
 ```
-src/lib/services/
-├── documentParser.ts      # DOCX → ProseMirror JSON
-├── documentDiffer.ts      # Character-level diff
-├── mergeDocuments.ts      # Apply track changes to cloned doc
-├── trackChangeInjector.ts # Create track change marks
-└── index.ts               # Export all services
+src/
+├── app/
+│   └── page.tsx                    # Main page (orchestration)
+├── components/
+│   ├── editor/
+│   │   └── SuperDocViewer.tsx      # Unified SuperDoc viewer component
+│   ├── layout/
+│   │   ├── Header.tsx
+│   │   └── Footer.tsx
+│   ├── upload/
+│   │   └── DocxUploader.tsx
+│   └── index.ts
+├── lib/
+│   └── services/
+│       ├── documentParser.ts       # DOCX → ProseMirror JSON
+│       ├── documentDiffer.ts       # Character-level diff
+│       ├── mergeDocuments.ts       # Apply track changes to cloned doc
+│       ├── trackChangeInjector.ts  # Create track change marks
+│       ├── exportPreparation.ts    # Fix SuperDoc export limitations
+│       └── index.ts
+└── store/
+    └── document-store.ts           # Zustand state management
 ```
 
 ---
@@ -393,8 +409,8 @@ export interface TrackChangeAuthor {
 }
 
 const DEFAULT_AUTHOR: TrackChangeAuthor = {
-  name: 'Comparison Tool',
-  email: 'comparison@tool.local',
+  name: 'DocX Diff Tool',
+  email: 'tool@docxdiff.com',
 };
 
 /**
@@ -499,8 +515,8 @@ interface TrackFormatMark {
   type: 'trackFormat',
   attrs: {
     id: '550e8400-e29b-41d4-a716-446655440000',
-    author: 'Comparison Tool',
-    authorEmail: 'comparison@tool.local',
+    author: 'DocX Diff Tool',
+    authorEmail: 'tool@docxdiff.com',
     authorImage: '',
     date: '2024-01-15T10:30:00.000Z',
     before: [],                           // No marks (plain text)
@@ -524,8 +540,8 @@ import { createTrackInsertMark, createTrackDeleteMark, type TrackChangeAuthor } 
 type ProseMirrorNode = any;
 
 const DEFAULT_AUTHOR: TrackChangeAuthor = {
-  name: 'Comparison Tool',
-  email: 'comparison@tool.local',
+  name: 'DocX Diff Tool',
+  email: 'tool@docxdiff.com',
 };
 
 function cloneNode(node: ProseMirrorNode): ProseMirrorNode {
@@ -726,30 +742,26 @@ Configure SuperDoc to display and interact with track changes.
 ```typescript
 // Display merged document with track changes
 
+const SUPERDOC_USER = {
+  name: 'DocX Diff User',
+  email: 'tool@docxdiff.com',
+};
+
+// Permission resolver that allows accepting/rejecting all track changes
+const permissionResolver = ({ permission }: { permission: string }) => {
+  const allowedPermissions = ['RESOLVE_OWN', 'RESOLVE_OTHER', 'REJECT_OWN', 'REJECT_OTHER'];
+  return allowedPermissions.includes(permission) ? true : undefined;
+};
+
 const superdoc = new SuperDoc({
   selector: container,
-  document: originalFile,  // Load original file first
-  documentMode: 'editing', // Required for accept/reject
-  role: 'editor',          // Permission to accept/reject
-  rulers: false,
-  user: {
-    name: 'Reviewer',
-    email: 'reviewer@app.local',
-  },
-  
-  // CRITICAL: Allow accepting AND rejecting changes from any author
-  // Without REJECT_OWN and REJECT_OTHER, the reject button won't work!
-  permissionResolver: ({ permission }: { permission: string }) => {
-    if (
-      permission === 'RESOLVE_OWN' ||    // Accept own changes
-      permission === 'RESOLVE_OTHER' ||  // Accept others' changes
-      permission === 'REJECT_OWN' ||     // Reject own changes
-      permission === 'REJECT_OTHER'      // Reject others' changes
-    ) {
-      return true;
-    }
-    return undefined; // Use default decision for other permissions
-  },
+  toolbar: '#toolbar',       // Optional: toolbar container
+  document: originalFile,    // Load original file first
+  documentMode: 'editing',   // Required for accept/reject
+  role: 'editor',            // Permission to accept/reject
+  rulers: true,              // Show rulers
+  user: SUPERDOC_USER,
+  permissionResolver,        // CRITICAL: Without this, reject won't work!
   
   onReady: ({ superdoc: sd }) => {
     const editor = sd.activeEditor;
@@ -768,13 +780,7 @@ const superdoc = new SuperDoc({
     }
     
     // Enable track changes in REVIEW mode
-    // - 'review': Shows both insertions (green) and deletions (red strikethrough)
-    // - 'original': Hides insertions, shows deletions
-    // - 'final': Shows insertions, hides deletions
-    sd.setTrackedChangesPreferences({
-      mode: 'review',
-      enabled: true
-    });
+    sd.setTrackedChangesPreferences({ mode: 'review', enabled: true });
   }
 });
 ```
@@ -838,8 +844,47 @@ This makes format changes visually distinct from insertions (green) and deletion
 
 ## Complete Usage Example
 
+### Using the SuperDocViewer Component (Recommended)
+
+The `SuperDocViewer` is a unified React component that handles both simple viewing and merged document display:
+
+```tsx
+import { SuperDocViewer } from '@/components';
+import { parseDocx, diffDocuments, mergeDocuments } from '@/lib/services';
+
+function DocumentComparison({ v1File, v2File }) {
+  const [mergedJson, setMergedJson] = useState(null);
+  const superdocRef = useRef(null);
+  
+  // Run comparison when V2 is uploaded
+  useEffect(() => {
+    async function compare() {
+      const { json: v1Json } = await parseDocx(v1File);
+      const { json: v2Json } = await parseDocx(v2File);
+      const diffResult = diffDocuments(v1Json, v2Json);
+      const merged = mergeDocuments(v1Json, v2Json, diffResult);
+      setMergedJson(merged);
+    }
+    if (v2File) compare();
+  }, [v1File, v2File]);
+  
+  return (
+    <SuperDocViewer
+      file={v1File}
+      content={mergedJson}           // Optional: inject merged JSON
+      onSuperdocReady={(sd) => { superdocRef.current = sd; }}
+      showRulers                     // Show document rulers
+      reviewMode                     // Enable track changes display
+      className="h-full"
+    />
+  );
+}
+```
+
+### Direct SuperDoc Usage
+
 ```typescript
-import { parseDocx, diffDocuments, mergeDocuments } from './services';
+import { parseDocx, diffDocuments, mergeDocuments } from '@/lib/services';
 
 async function compareDocuments(v1File: File, v2File: File) {
   // Step 1: Parse both documents
@@ -848,18 +893,23 @@ async function compareDocuments(v1File: File, v2File: File) {
   
   // Step 2: Diff the documents
   const diffResult = diffDocuments(v1Json, v2Json);
-  console.log(`Found ${diffResult.summary.join(', ')}`);
   
   // Step 3: Merge with track changes
   const mergedJson = mergeDocuments(v1Json, v2Json, diffResult);
   
   // Step 4: Display in SuperDoc
+  const { SuperDoc } = await import('superdoc');
+  
   const superdoc = new SuperDoc({
     selector: '#editor',
+    toolbar: '#toolbar',
     document: v1File,
     documentMode: 'editing',
     role: 'editor',
-    permissionResolver: () => true,
+    user: { name: 'DocX Diff User', email: 'tool@docxdiff.com' },
+    permissionResolver: ({ permission }) => 
+      ['RESOLVE_OWN', 'RESOLVE_OTHER', 'REJECT_OWN', 'REJECT_OTHER'].includes(permission) 
+        ? true : undefined,
     onReady: ({ superdoc: sd }) => {
       sd.activeEditor.commands.setContent(mergedJson);
       sd.setTrackedChangesPreferences({ mode: 'review', enabled: true });
@@ -869,6 +919,51 @@ async function compareDocuments(v1File: File, v2File: File) {
   return { mergedJson, diffResult, superdoc };
 }
 ```
+
+---
+
+## Step 8: Export Preparation (DOCX Download)
+
+SuperDoc has limitations when exporting documents with comments and format changes. The `ExportPreparation` class fixes these:
+
+```typescript
+// src/lib/services/exportPreparation.ts
+
+import { ExportPreparation, downloadBlob } from '@/lib/services';
+
+async function handleDownload(superdoc: SuperDocInstance, filename: string) {
+  const editor = superdoc.activeEditor;
+  
+  // Save original state
+  const originalJson = editor.getJSON();
+  
+  // Prepare document for export (fixes comments and trackFormat)
+  const exportPrep = new ExportPreparation(superdoc);
+  const { patchedDocJson, fixedComments } = exportPrep.prepare();
+  
+  // Temporarily apply patched content
+  editor.commands.setContent(patchedDocJson);
+  
+  // Export with fixed comments
+  const blob = await editor.exportDocx({
+    isFinalDoc: false,
+    commentsType: 'external',
+    comments: fixedComments,
+  });
+  
+  // Restore original content (keeps editor visually unchanged)
+  editor.commands.setContent(originalJson);
+  
+  // Trigger download
+  if (blob) downloadBlob(blob, filename);
+}
+```
+
+**What ExportPreparation fixes:**
+1. **Comments with empty text**: SuperDoc's internal `convertHtmlToSchema` creates empty paragraph JSON. We manually construct the correct structure.
+2. **Standalone trackFormat marks**: SuperDoc only exports format changes when paired with `trackInsert`/`trackDelete`. We transform standalone format changes into delete+insert pairs.
+
+> ⚠️ **Limitation**: Rejecting format changes in MS Word will erase the text due to how Word handles the generated XML. Accepting works correctly.
 
 ---
 
