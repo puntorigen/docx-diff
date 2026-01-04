@@ -14,8 +14,8 @@ export interface TrackChangeAuthor {
 }
 
 const DEFAULT_AUTHOR: TrackChangeAuthor = {
-  name: 'DocX Diff',
-  email: 'docx@pabloschaffner.com',
+  name: 'DocX Diff Tool',
+  email: 'tool@docxdiff.com',
 };
 
 /**

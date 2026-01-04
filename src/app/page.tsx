@@ -104,8 +104,8 @@ function MergedDocumentViewer({
         role: 'editor', // Editor role has permission to accept changes
         rulers: true, // Show rulers for better document editing
         user: {
-          name: 'DocX Diff',
-          email: 'docx@pabloschaffner.com',
+          name: 'DocX Diff User',
+          email: 'tool@docxdiff.com',
         },
         // Allow accepting/rejecting changes from any author (including our 'DocX Diff')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -314,8 +314,8 @@ function SimpleDocumentViewer({
         role: 'editor',
         rulers: false, // No rulers for simpler view
         user: {
-          name: 'Document Viewer',
-          email: 'viewer@comparison.local',
+          name: 'DocX Diff User',
+          email: 'tool@docxdiff.com',
         },
         onReady: ({ superdoc: sd }: { superdoc: SuperDocInstance }) => {
           superdocRef.current = sd;
@@ -431,23 +431,6 @@ export default function Home() {
     }
 
     const editor = superdoc.activeEditor;
-    if (!editor?.exportDocx) {
-      console.warn('No active editor or exportDocx method');
-      // Fallback to superdoc.export()
-      try {
-        await superdoc.export({
-          exportType: ['docx'],
-          exportedName: v1File?.name?.replace('.docx', '-compared') || 'document-compared',
-          triggerDownload: true,
-          commentsType: 'external',
-        });
-      } catch (err) {
-        console.error('Failed to export document:', err);
-        setError('Failed to download document');
-      }
-      return;
-    }
-
     try {
       // Save original document state (to restore after export)
       const originalJson = editor.getJSON();

@@ -153,7 +153,7 @@ superdoc.setTrackedChangesPreferences({
 
 Track changes are attributed to:
 - **Author**: DocX Diff
-- **Email**: docx@pabloschaffner.com
+- **Email**: tool@docxdiff.com
 
 ## Brand Guidelines
 

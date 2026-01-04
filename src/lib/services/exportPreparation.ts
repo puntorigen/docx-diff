@@ -127,8 +127,8 @@ export class ExportPreparation {
           type: 'trackDelete',
           attrs: {
             id: deleteId,
-            author: author || 'DocX Diff',
-            authorEmail: authorEmail || 'docx@pabloschaffner.com',
+            author: author || 'DocX Diff Tool',
+            authorEmail: authorEmail || 'tool@docxdiff.com',
             authorImage: '',
             date: date || new Date().toISOString(),
           },
@@ -147,8 +147,8 @@ export class ExportPreparation {
           type: 'trackInsert',
           attrs: {
             id: insertId,
-            author: author || 'DocX Diff',
-            authorEmail: authorEmail || 'docx@pabloschaffner.com',
+            author: author || 'DocX Diff Tool',
+            authorEmail: authorEmail || 'tool@docxdiff.com',
             authorImage: '',
             date: date || new Date().toISOString(),
           },

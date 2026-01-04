@@ -23,8 +23,12 @@ export function Header({
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0">
       <div className="flex items-center justify-between">
-        {/* Logo and title */}
-        <div className="flex items-center gap-3">
+        {/* Logo and title - clickable to reset */}
+        <button
+          onClick={onReset}
+          className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+          title="Start over"
+        >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/logo.png"
@@ -36,14 +40,14 @@ export function Header({
           <h1 className="text-xl font-bold" style={{ color: '#005B9C' }}>
             Doc<span style={{ color: '#007ACC' }}>X</span> Diff
           </h1>
-        </div>
+        </button>
 
         {/* Actions */}
         <div className="flex items-center gap-3">
           {onReset && (
             <button
               onClick={onReset}
-              className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors"
+              className="inline-flex items-center px-4 py-2 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition-colors cursor-pointer"
             >
               <svg
                 className="w-4 h-4 mr-2"
@@ -65,7 +69,7 @@ export function Header({
           {showUploadButton && onUploadNewVersion && (
             <button
               onClick={onUploadNewVersion}
-              className="inline-flex items-center px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors"
+              className="inline-flex items-center px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors cursor-pointer"
               style={{ backgroundColor: '#007ACC' }}
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#005B9C'}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#007ACC'}
@@ -90,7 +94,7 @@ export function Header({
           {showDownloadButton && onDownload && (
             <button
               onClick={onDownload}
-              className="inline-flex items-center px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-colors"
+              className="inline-flex items-center px-4 py-2 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-colors cursor-pointer"
             >
               <svg
                 className="w-4 h-4 mr-2"
