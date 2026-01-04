@@ -17,6 +17,8 @@ import {
   parseDocx,
   diffDocuments,
   mergeDocuments,
+  ExportPreparation,
+  downloadBlob,
   type ProseMirrorJSON,
   type DiffResult,
 } from '@/lib/services';
@@ -103,7 +105,7 @@ function MergedDocumentViewer({
         rulers: true, // Show rulers for better document editing
         user: {
           name: 'DocX Diff',
-          email: 'viewer@comparison.local',
+          email: 'docx@pabloschaffner.com',
         },
         // Allow accepting/rejecting changes from any author (including our 'DocX Diff')
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -414,20 +416,83 @@ export default function Home() {
 
   /**
    * Handle download of current document as DOCX
+   * Uses ExportPreparation class to fix SuperDoc limitations:
+   * - Comments with empty commentJSON
+   * - Standalone trackFormat marks not being exported
+   * 
+   * Strategy: Save original state → Apply patch → Export → Restore original
+   * This keeps the editor visually unchanged while fixing export issues.
    */
   const handleDownload = useCallback(async () => {
-    if (!activeSuperdocRef.current) {
+    const superdoc = activeSuperdocRef.current;
+    if (!superdoc) {
       console.warn('No active SuperDoc instance');
       return;
     }
 
+    const editor = superdoc.activeEditor;
+    if (!editor?.exportDocx) {
+      console.warn('No active editor or exportDocx method');
+      // Fallback to superdoc.export()
+      try {
+        await superdoc.export({
+          exportType: ['docx'],
+          exportedName: v1File?.name?.replace('.docx', '-compared') || 'document-compared',
+          triggerDownload: true,
+          commentsType: 'external',
+        });
+      } catch (err) {
+        console.error('Failed to export document:', err);
+        setError('Failed to download document');
+      }
+      return;
+    }
+
     try {
-      await activeSuperdocRef.current.export({
-        exportType: ['docx'],
-        exportedName: v1File?.name?.replace('.docx', '-compared') || 'document-compared',
-        triggerDownload: true,
+      // Save original document state (to restore after export)
+      const originalJson = editor.getJSON();
+
+      // Prepare document for export (fixes comments and trackFormat)
+      const exportPrep = new ExportPreparation(superdoc);
+      const { patchedDocJson, fixedComments } = exportPrep.prepare();
+
+
+      // Helper to set content
+      const setEditorContent = (json: typeof originalJson) => {
+        if (editor.commands?.setContent) {
+          editor.commands.setContent(json);
+        } else if (editor.setContent) {
+          editor.setContent(json);
+        } else {
+          const { state, view } = editor;
+          if (state?.doc && view && json.content) {
+            const newDoc = state.schema.nodeFromJSON(json);
+            const tr = state.tr.replaceWith(0, state.doc.content.size, newDoc.content);
+            view.dispatch(tr);
+          }
+        }
+      };
+
+      // Temporarily apply patched content for export
+      setEditorContent(patchedDocJson);
+
+      // Export with fixed comments
+      const blob = await editor.exportDocx({
+        isFinalDoc: false,
         commentsType: 'external',
+        comments: fixedComments,
       });
+
+      // Immediately restore original content (keeps editor visually unchanged)
+      setEditorContent(originalJson);
+
+      if (blob) {
+        const filename = v1File?.name?.replace('.docx', '-compared.docx') || 'document-compared.docx';
+        downloadBlob(blob, filename);
+        console.log('[Download] Success:', filename);
+      } else {
+        throw new Error('Export returned no data');
+      }
     } catch (err) {
       console.error('Failed to export document:', err);
       setError('Failed to download document');

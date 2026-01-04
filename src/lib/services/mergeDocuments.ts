@@ -194,12 +194,8 @@ export function mergeDocuments(
           // Check if there's a format change at this position
           if (currentFormatChange) {
             // For format changes, use the NEW marks (after) plus trackFormat
-            console.log(`Applying trackFormat mark at pos ${nodeOffset + i} for text "${chunk}"`);
-            console.log(`  Before marks: ${JSON.stringify(currentFormatChange.before.map((m: any) => m.type))}`);
-            console.log(`  After marks: ${JSON.stringify(currentFormatChange.after.map((m: any) => m.type))}`);
-            
-            // Replace old marks with new marks, then add trackFormat
-            marks = [...currentFormatChange.after, createTrackFormatMark(currentFormatChange.before, currentFormatChange.after, author)];
+            const trackFormatMark = createTrackFormatMark(currentFormatChange.before, currentFormatChange.after, author);
+            marks = [...currentFormatChange.after, trackFormatMark];
           }
         }
 
