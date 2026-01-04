@@ -187,6 +187,13 @@ export default function Home() {
   }, []);
 
   /**
+   * Handle SuperDoc ready (stable reference to avoid reinitialization)
+   */
+  const handleSuperdocReady = useCallback((sd: SuperDocInstance) => {
+    activeSuperdocRef.current = sd;
+  }, []);
+
+  /**
    * Handle V2 file upload and run comparison
    */
   const handleV2Upload = useCallback(async (file: File) => {
@@ -390,7 +397,7 @@ export default function Home() {
                 key={`merged-${v1File.name}`}
                 file={v1File}
                 content={comparison.mergedJson}
-                onSuperdocReady={(sd) => { activeSuperdocRef.current = sd; }}
+                onSuperdocReady={handleSuperdocReady}
                 showRulers
                 reviewMode
                 className="flex-1 min-h-0 rounded-lg overflow-hidden border border-gray-200 shadow-sm"
