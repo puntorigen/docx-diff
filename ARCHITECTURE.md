@@ -81,6 +81,7 @@ src/
 | File | Purpose |
 |------|---------|
 | `page.tsx` | Main orchestration - handles uploads, comparison flow, UI states |
+| `Header.tsx` | App header with file info row showing compared files |
 | `SuperDocViewer.tsx` | Unified component for viewing/editing documents with SuperDoc |
 | `documentParser.ts` | Converts DOCX files to ProseMirror JSON using hidden editors |
 | `documentDiffer.ts` | Performs character-level diff using diff-match-patch |
@@ -94,6 +95,35 @@ src/
 3. **Merge** → `mergeDocuments()` creates JSON with track marks
 4. **Display** → `SuperDocViewer` renders merged document in review mode
 5. **Export** → `ExportPreparation` fixes issues → `editor.exportDocx()` → download
+
+## UI Components
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Header                                                          │
+│ ┌─────────────────────────────────────────────────────────────┐ │
+│ │ [Logo] DocX Diff         [Start over] [Compare with...] [↓] │ │
+│ ├─────────────────────────────────────────────────────────────┤ │
+│ │ 📄 Original: file.docx → Compared with: file-v2.docx        │ │  ← File info row
+│ └─────────────────────────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────────────┤
+│ Notification Card (dismissible)                                 │
+│ ┌─────────────────────────────────────────────────────────────┐ │
+│ │ ✓ Changes detected: 3 insertions, 2 deletions          [×]  │ │
+│ └─────────────────────────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────────────┤
+│ SuperDocViewer (with toolbar)                                   │
+│ ┌─────────────────────────────────────────────────────────────┐ │
+│ │ [Toolbar: B I U | Align | Lists | ...]                      │ │
+│ ├─────────────────────────────────────────────────────────────┤ │
+│ │                                                             │ │
+│ │   Document content with track changes...                    │ │
+│ │                                                             │ │
+│ └─────────────────────────────────────────────────────────────┘ │
+├─────────────────────────────────────────────────────────────────┤
+│ Footer                                                          │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 ## Track Change Marks
 

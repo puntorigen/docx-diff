@@ -2,7 +2,7 @@
 
 /**
  * Header Component
- * App header with title and actions.
+ * App header with title, file info, and actions.
  */
 
 interface HeaderProps {
@@ -11,6 +11,9 @@ interface HeaderProps {
   onDownload?: () => void;
   showDownloadButton?: boolean;
   onReset?: () => void;
+  v1FileName?: string;
+  v2FileName?: string;
+  changeCount?: number;
 }
 
 export function Header({
@@ -19,10 +22,14 @@ export function Header({
   onDownload,
   showDownloadButton = false,
   onReset,
+  v1FileName,
+  v2FileName,
+  changeCount,
 }: HeaderProps) {
   return (
-    <header className="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0">
-      <div className="flex items-center justify-between">
+    <header className="bg-white border-b border-gray-200 flex-shrink-0">
+      {/* Main header row */}
+      <div className="px-6 py-3 flex items-center justify-between">
         {/* Logo and title - clickable to reset */}
         <button
           onClick={onReset}
@@ -87,7 +94,7 @@ export function Header({
                   d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
                 />
               </svg>
-              Upload new version
+              Compare with...
             </button>
           )}
 
@@ -114,6 +121,30 @@ export function Header({
           )}
         </div>
       </div>
+
+      {/* File info row - only shown when we have a file */}
+      {v1FileName && (
+        <div className="px-6 py-2 border-t border-gray-100" style={{ backgroundColor: '#F8FAFC' }}>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-gray-400">📄</span>
+            <span className="font-medium" style={{ color: '#005B9C' }}>Original:</span>
+            <span style={{ color: '#007ACC' }}>{v1FileName}</span>
+            
+            {v2FileName && (
+              <>
+                <span className="text-gray-300 mx-2">→</span>
+                <span className="font-medium" style={{ color: '#005B9C' }}>Compared with:</span>
+                <span style={{ color: '#007ACC' }}>{v2FileName}</span>
+                {changeCount !== undefined && changeCount > 0 && (
+                  <span className="text-gray-500 ml-2">
+                    • {changeCount} change{changeCount !== 1 ? 's' : ''} found
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </header>
   );
 }

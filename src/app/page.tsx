@@ -39,6 +39,7 @@ export default function Home() {
     setStage,
     v1File,
     setV1File,
+    v2File,
     setV2,
     changeSet,
     setChangeSet,
@@ -212,6 +213,9 @@ export default function Home() {
         showDownloadButton={stage === 'result'}
         onDownload={handleDownload}
         onReset={stage !== 'upload' ? handleReset : undefined}
+        v1FileName={v1File?.name}
+        v2FileName={v2File?.name}
+        changeCount={changeSet?.summary.totalChanges}
       />
 
       <main className="flex-1 flex min-h-0">

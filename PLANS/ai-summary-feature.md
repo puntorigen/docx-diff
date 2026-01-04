@@ -728,11 +728,30 @@ async function generateAiSummary() {
 
 **Update notification card:**
 
+The notification card works together with the Header's file info row:
+
+```
+Header:
+┌──────────────────────────────────────────────────────────────┐
+│ [Logo] DocX Diff        [Start over] [Compare with...] [↓]   │
+├──────────────────────────────────────────────────────────────┤
+│ 📄 Original: contract.docx → Compared with: contract-v2.docx │
+└──────────────────────────────────────────────────────────────┘
+
+Notification Card (dismissible):
+┌──────────────────────────────────────────────────────────────┐
+│ ✓ Changes in the new version include:                        │
+│   • an updated title (NDA CONTRACT)                          │
+│   • bolding 'contractor'                                     │
+│   • populating the contract number                      [×]  │
+└──────────────────────────────────────────────────────────────┘
+```
+
 ```tsx
 {/* Change summary notification card */}
 {changeSet && showChangeSummary && (
   <div className="...notification card styles...">
-    <h3>Changes detected in new version</h3>
+    <h3>Changes in the new version include:</h3>
     
     {summaryLoading ? (
       <p className="text-sm text-gray-500">
@@ -755,6 +774,8 @@ async function generateAiSummary() {
   </div>
 )}
 ```
+
+**Note:** The "Original" and "Compared with" file names are now shown in the Header component (file info row), not in the notification card. This keeps the notification card focused on describing WHAT changed, while the Header shows WHICH files are being compared.
 
 ---
 

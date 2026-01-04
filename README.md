@@ -38,6 +38,7 @@
 - 🔍 **Track Changes** – Insertions (green), deletions (red), format changes (yellow)
 - ✅ **Accept/Reject** – Review changes individually via SuperDoc's bubble UI
 - 🎨 **Format Detection** – Catches bold, italic, and other formatting changes
+- 📊 **File Indicator** – Always see which files are being compared
 - 💾 **Download** – Export with tracked changes (MS Word compatible)
 - 🛠️ **Full Editor** – SuperDoc toolbar for additional editing
 
