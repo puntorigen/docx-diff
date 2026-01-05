@@ -214,8 +214,10 @@ function detectFormatChanges(
       posA += segment.text.length;
       posB += segment.text.length;
     } else if (segment.type === 'delete') {
+      // Deleted text exists only in docA, so only advance posA
       posA += segment.text.length;
     } else if (segment.type === 'insert') {
+      // Inserted text exists only in docB, so only advance posB
       posB += segment.text.length;
     }
   }
