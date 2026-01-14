@@ -200,8 +200,11 @@ export default function Home() {
   }, [reset]);
 
   // Convenience accessor for comparison stats
+  // Use enriched changes count for display (groups related changes, so replacement = 1 not 2)
+  const enrichedChangesCount = viewerRef.current?.getEnrichedChangesContext?.()?.length ?? 0;
   const stats = comparisonResult ? {
-    totalChanges: comparisonResult.totalChanges,
+    // Use enriched count as the main "total" for user-friendly display
+    totalChanges: enrichedChangesCount || comparisonResult.totalChanges,
     insertions: comparisonResult.insertions,
     deletions: comparisonResult.deletions,
     formatChanges: comparisonResult.formatChanges,
