@@ -1,10 +1,10 @@
 /**
  * Document Store
- * Global state management for document comparison.
+ * Simplified global state management for document comparison.
  */
 
 import { create } from 'zustand';
-import type { DocumentModel, ChangeSet } from '@/lib/types';
+import type { ComparisonResult } from 'docx-diff-editor';
 
 export type AppStage = 'upload' | 'viewing' | 'comparing' | 'result';
 
@@ -15,21 +15,15 @@ export interface DocumentState {
 
   // V1 Document (original)
   v1File: File | null;
-  v1Model: DocumentModel | null;
   setV1File: (file: File) => void;
-  setV1Model: (model: DocumentModel) => void;
-  setV1: (file: File, model: DocumentModel) => void;
-  clearV1: () => void;
 
   // V2 Document (new version)
   v2File: File | null;
-  v2Model: DocumentModel | null;
-  setV2: (file: File, model: DocumentModel) => void;
-  clearV2: () => void;
+  setV2File: (file: File) => void;
 
-  // Comparison result
-  changeSet: ChangeSet | null;
-  setChangeSet: (changeSet: ChangeSet) => void;
+  // Comparison result from the package
+  comparisonResult: ComparisonResult | null;
+  setComparisonResult: (result: ComparisonResult) => void;
 
   // Processing state
   isProcessing: boolean;
@@ -50,21 +44,15 @@ export const useDocumentStore = create<DocumentState>((set) => ({
 
   // V1
   v1File: null,
-  v1Model: null,
   setV1File: (file) => set({ v1File: file }),
-  setV1Model: (model) => set({ v1Model: model }),
-  setV1: (file, model) => set({ v1File: file, v1Model: model }),
-  clearV1: () => set({ v1File: null, v1Model: null }),
 
   // V2
   v2File: null,
-  v2Model: null,
-  setV2: (file, model) => set({ v2File: file, v2Model: model }),
-  clearV2: () => set({ v2File: null, v2Model: null }),
+  setV2File: (file) => set({ v2File: file }),
 
-  // Comparison
-  changeSet: null,
-  setChangeSet: (changeSet) => set({ changeSet, stage: 'result' }),
+  // Comparison result
+  comparisonResult: null,
+  setComparisonResult: (result) => set({ comparisonResult: result, stage: 'result' }),
 
   // Processing
   isProcessing: false,
@@ -79,12 +67,9 @@ export const useDocumentStore = create<DocumentState>((set) => ({
     set({
       stage: 'upload',
       v1File: null,
-      v1Model: null,
       v2File: null,
-      v2Model: null,
-      changeSet: null,
+      comparisonResult: null,
       isProcessing: false,
       error: null,
     }),
 }));
-

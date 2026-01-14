@@ -1,45 +1,16 @@
 /**
  * Types for AI-powered change summary feature
+ * EnrichedChange and ChangeLocation are now imported from docx-diff-editor
  */
 
-/**
- * Location context for a change
- */
-export interface ChangeLocation {
-  nodeType: 'heading' | 'paragraph' | 'listItem' | 'tableCell' | 'unknown';
-  headingLevel?: number;
-  paragraphIndex?: number;
-  sectionTitle?: string;
-  description: string;
-}
-
-/**
- * Format change details
- */
-export interface FormatDetails {
-  added: string[];
-  removed: string[];
-}
-
-/**
- * Enriched change with full context
- */
-export interface EnrichedChange {
-  type: 'insertion' | 'deletion' | 'replacement' | 'format';
-  text?: string;
-  oldText?: string;
-  newText?: string;
-  location: ChangeLocation;
-  formatDetails?: FormatDetails;
-  charCount?: number;
-  surroundingText?: string;  // The sentence or clause containing the change
-}
+// Re-export types from the package for convenience
+export type { EnrichedChange, ChangeLocation, FormatDetails } from 'docx-diff-editor';
 
 /**
  * API request body
  */
 export interface SummarizeChangesRequest {
-  changes: EnrichedChange[];
+  changes: import('docx-diff-editor').EnrichedChange[];
   maxBullets?: number;
 }
 
@@ -59,4 +30,3 @@ export interface SummarizeChangesResponse {
   generatedAt: string;
   fallback?: boolean;
 }
-

@@ -7,7 +7,8 @@
  */
 
 import { GroqService } from '@/lib/services/groqService';
-import type { EnrichedChange, SummaryBullet } from '@/lib/types/summary.types';
+import type { EnrichedChange } from 'docx-diff-editor';
+import type { SummaryBullet } from '@/lib/types/summary.types';
 
 /**
  * Generate AI summary bullets from enriched changes

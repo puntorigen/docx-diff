@@ -2,7 +2,7 @@
 
 /**
  * DocX Diff - Main Page
- * Uses "Merge and Mark" approach: builds a merged document with track change marks.
+ * Uses docx-diff-editor package for document comparison with track changes.
  */
 
 import { useCallback, useRef, useState, useEffect } from 'react';
@@ -11,22 +11,11 @@ import {
   Header,
   Footer,
   DocxUploader,
-  SuperDocViewer,
+  DocxViewer,
+  type DocxViewerRef,
 } from '@/components';
-import {
-  parseDocx,
-  diffDocuments,
-  mergeDocuments,
-  ExportPreparation,
-  downloadBlob,
-  extractEnrichedChanges,
-  type ProseMirrorJSON,
-  type DiffResult,
-} from '@/lib/services';
+import { downloadBlob, type ComparisonResult } from '@/lib/services';
 import { summarizeChanges } from '@/lib/actions/summarize';
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type SuperDocInstance = any;
 
 /**
  * Get color for bullet based on change type
@@ -46,13 +35,6 @@ function getBulletColor(type: string): string {
   }
 }
 
-interface ComparisonState {
-  v1Json: ProseMirrorJSON | null;
-  v2Json: ProseMirrorJSON | null;
-  mergedJson: ProseMirrorJSON | null;
-  diffResult: DiffResult | null;
-}
-
 export default function Home() {
   const {
     stage,
@@ -60,9 +42,9 @@ export default function Home() {
     v1File,
     setV1File,
     v2File,
-    setV2,
-    changeSet,
-    setChangeSet,
+    setV2File,
+    comparisonResult,
+    setComparisonResult,
     isProcessing,
     setIsProcessing,
     error,
@@ -71,37 +53,63 @@ export default function Home() {
   } = useDocumentStore();
 
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showChangeSummary, setShowChangeSummary] = useState(true);
-  const [comparison, setComparison] = useState<ComparisonState>({
-    v1Json: null,
-    v2Json: null,
-    mergedJson: null,
-    diffResult: null,
-  });
+  const [isSummaryExpanded, setIsSummaryExpanded] = useState(true);
 
   // AI Summary state - structured with type for color coding
   const [aiSummary, setAiSummary] = useState<{ type: string; text: string }[] | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
 
-  // Ref to store the active SuperDoc instance for download
-  const activeSuperdocRef = useRef<SuperDocInstance | null>(null);
+  // Ref to the DocxViewer component
+  const viewerRef = useRef<DocxViewerRef>(null);
+
+  // Track if editor is ready
+  const [editorReady, setEditorReady] = useState(false);
+
+  // Track which file has been loaded to avoid reloading
+  const loadedFileRef = useRef<File | null>(null);
+
+  /**
+   * Load file into editor when both editor is ready and we have a file
+   */
+  useEffect(() => {
+    // Only proceed if editor is ready and we have a file that hasn't been loaded
+    if (!editorReady || !v1File || !viewerRef.current) return;
+    if (loadedFileRef.current === v1File) return; // Already loaded this file
+
+    const loadFile = async () => {
+      try {
+        console.log('[Page] Loading file into editor:', v1File.name);
+        loadedFileRef.current = v1File;
+        // DocxDiffEditor handles its own loading state, no need for overlay
+        await viewerRef.current!.setSource(v1File);
+        console.log('[Page] File loaded successfully');
+      } catch (err) {
+        console.error('[Page] Failed to load document:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load document');
+        loadedFileRef.current = null; // Allow retry
+      }
+    };
+
+    loadFile();
+  }, [editorReady, v1File, setError]);
 
   /**
    * Generate AI summary when comparison completes
    */
   useEffect(() => {
-    if (stage === 'result' && comparison.mergedJson && !aiSummary && !summaryLoading) {
+    if (stage === 'result' && comparisonResult && !aiSummary && !summaryLoading) {
       generateAiSummary();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage, comparison.mergedJson]);
+  }, [stage, comparisonResult]);
 
   async function generateAiSummary() {
-    if (!comparison.mergedJson) return;
+    if (!viewerRef.current) return;
     
     setSummaryLoading(true);
     try {
-      const enrichedChanges = extractEnrichedChanges(comparison.mergedJson);
+      // Get enriched changes from the package
+      const enrichedChanges = viewerRef.current.getEnrichedChangesContext();
       
       if (enrichedChanges.length === 0) {
         setAiSummary([{ type: 'other', text: 'No changes detected' }]);
@@ -123,46 +131,12 @@ export default function Home() {
    * Handle download of current document as DOCX
    */
   const handleDownload = useCallback(async () => {
-    const superdoc = activeSuperdocRef.current;
-    if (!superdoc) return;
+    if (!viewerRef.current) return;
 
-    const editor = superdoc.activeEditor;
     try {
-      const originalJson = editor.getJSON();
-      const exportPrep = new ExportPreparation(superdoc);
-      const { patchedDocJson, fixedComments } = exportPrep.prepare();
-
-      // Helper to set content
-      const setEditorContent = (json: typeof originalJson) => {
-        if (editor.commands?.setContent) {
-          editor.commands.setContent(json);
-        } else if (editor.setContent) {
-          editor.setContent(json);
-        } else {
-          const { state, view } = editor;
-          if (state?.doc && view && json.content) {
-            const newDoc = state.schema.nodeFromJSON(json);
-            const tr = state.tr.replaceWith(0, state.doc.content.size, newDoc.content);
-            view.dispatch(tr);
-          }
-        }
-      };
-
-      // Apply patch → Export → Restore
-      setEditorContent(patchedDocJson);
-      const blob = await editor.exportDocx({
-        isFinalDoc: false,
-        commentsType: 'external',
-        comments: fixedComments,
-      });
-      setEditorContent(originalJson);
-
-      if (blob) {
-        const filename = v1File?.name?.replace('.docx', '-compared.docx') || 'document-compared.docx';
-        downloadBlob(blob, filename);
-      } else {
-        throw new Error('Export returned no data');
-      }
+      const blob = await viewerRef.current.exportDocx();
+      const filename = v1File?.name?.replace('.docx', '-compared.docx') || 'document-compared.docx';
+      downloadBlob(blob, filename);
     } catch (err) {
       console.error('Failed to export document:', err);
       setError('Failed to download document');
@@ -170,105 +144,69 @@ export default function Home() {
   }, [v1File, setError]);
 
   /**
+   * Handle editor ready
+   */
+  const handleEditorReady = useCallback(() => {
+    console.log('[Page] Editor ready');
+    setEditorReady(true);
+  }, []);
+
+  /**
    * Handle V1 file upload
    */
   const handleV1Upload = useCallback((file: File) => {
+    console.log('[Page] V1 file uploaded:', file.name);
     setError(null);
     setV1File(file);
-    setComparison({ v1Json: null, v2Json: null, mergedJson: null, diffResult: null });
     setStage('viewing');
   }, [setV1File, setStage, setError]);
-
-  /**
-   * Handle V1 JSON ready (from viewer)
-   */
-  const handleV1JsonReady = useCallback((json: ProseMirrorJSON) => {
-    setComparison((prev) => ({ ...prev, v1Json: json }));
-  }, []);
-
-  /**
-   * Handle SuperDoc ready (stable reference to avoid reinitialization)
-   */
-  const handleSuperdocReady = useCallback((sd: SuperDocInstance) => {
-    activeSuperdocRef.current = sd;
-  }, []);
 
   /**
    * Handle V2 file upload and run comparison
    */
   const handleV2Upload = useCallback(async (file: File) => {
-    if (!comparison.v1Json) {
-      setError('V1 document not ready. Please wait for it to finish loading.');
+    if (!viewerRef.current?.isReady()) {
+      setError('Document not ready. Please wait for it to finish loading.');
       return;
     }
 
-    setIsProcessing(true);
     setShowUploadModal(false);
-    setStage('comparing');
     setError(null);
     setAiSummary(null); // Reset AI summary for new comparison
+    // DocxDiffEditor handles its own loading state during comparison
 
     try {
-      // Parse V2 and diff
-      const { json: v2Json } = await parseDocx(file);
-      const diffResult = diffDocuments(comparison.v1Json, v2Json);
-      const mergedJson = mergeDocuments(comparison.v1Json, v2Json, diffResult);
-
-      setComparison((prev) => ({ ...prev, v2Json, mergedJson, diffResult }));
-      setV2(file, { paragraphs: [], metadata: { modifiedAt: new Date() } });
-
-      // Build change set for UI
-      const textChanges = diffResult.segments
-        .filter((s) => s.type !== 'equal')
-        .map((s, idx) => ({
-          type: s.type as 'insert' | 'delete',
-          text: s.text,
-          position: idx,
-          paragraphIndex: 0,
-        }));
-
-      const insertions = diffResult.segments.filter((s) => s.type === 'insert').length;
-      const deletions = diffResult.segments.filter((s) => s.type === 'delete').length;
-      const formatChangeCount = diffResult.formatChanges?.length || 0;
-
-      setChangeSet({
-        textChanges,
-        formatChanges: (diffResult.formatChanges || []).map((fc, idx) => ({
-          from: fc.from,
-          to: fc.to,
-          text: '',
-          paragraphIndex: idx,
-        })),
-        paragraphChanges: [],
-        summary: {
-          totalChanges: insertions + deletions + formatChangeCount,
-          insertions,
-          deletions,
-          formatChanges: formatChangeCount,
-          paragraphsAdded: 0,
-          paragraphsRemoved: 0,
-          highlights: diffResult.summary,
-        },
-      });
-
-      setShowChangeSummary(true);
-      setStage('result');
+      // Use the package's compareWith method - it handles everything!
+      const result = await viewerRef.current.compareWith(file);
+      
+      setV2File(file);
+      setComparisonResult(result);
+      setIsSummaryExpanded(true);
+      // Stage is set to 'result' by setComparisonResult
     } catch (err) {
       console.error('Comparison failed:', err);
       setError(err instanceof Error ? err.message : 'Comparison failed');
-      setStage('viewing');
-    } finally {
-      setIsProcessing(false);
     }
-  }, [comparison.v1Json, setV2, setChangeSet, setStage, setIsProcessing, setError]);
+  }, [setV2File, setComparisonResult, setError]);
 
   /**
    * Handle reset
    */
   const handleReset = useCallback(() => {
     reset();
-    setComparison({ v1Json: null, v2Json: null, mergedJson: null, diffResult: null });
+    setAiSummary(null);
+    setEditorReady(false);
+    loadedFileRef.current = null;
   }, [reset]);
+
+  // Convenience accessor for comparison stats
+  const stats = comparisonResult ? {
+    totalChanges: comparisonResult.totalChanges,
+    insertions: comparisonResult.insertions,
+    deletions: comparisonResult.deletions,
+    formatChanges: comparisonResult.formatChanges,
+    structuralChanges: comparisonResult.structuralChanges,
+  } : null;
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
@@ -280,7 +218,7 @@ export default function Home() {
         onReset={stage !== 'upload' ? handleReset : undefined}
         v1FileName={v1File?.name}
         v2FileName={v2File?.name}
-        changeCount={changeSet?.summary.totalChanges}
+        changeCount={stats?.totalChanges}
       />
 
       <main className="flex-1 flex min-h-0">
@@ -295,128 +233,121 @@ export default function Home() {
           </div>
         )}
 
-        {/* Viewing stage - show V1 document */}
-        {stage === 'viewing' && v1File && (
+        {/* Viewing/Comparing/Result stage - show document viewer */}
+        {(stage === 'viewing' || stage === 'comparing' || stage === 'result') && v1File && (
           <div className="flex-1 flex flex-col min-h-0">
-            <SuperDocViewer
-              key={v1File.name + v1File.lastModified}
-              file={v1File}
-              onJsonReady={handleV1JsonReady}
-              className="flex-1 min-h-0"
-            />
-          </div>
-        )}
-
-        {/* Comparing stage - show loading */}
-        {stage === 'comparing' && (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4" style={{ borderColor: '#007ACC' }} />
-              <p className="text-gray-600">Comparing documents...</p>
-            </div>
-          </div>
-        )}
-
-        {/* Result stage - show merged document with track changes */}
-        {stage === 'result' && v1File && (
-          <div className="flex-1 flex flex-col min-h-0">
-            {/* Change summary notification */}
-            {changeSet && showChangeSummary && (
-              <div className="mx-4 mt-4 mb-2 p-4 rounded-xl shadow-sm flex-shrink-0" style={{ backgroundColor: '#E8F0F8', border: '1px solid #007ACC' }}>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-start gap-3">
+            {/* Collapsible change summary notification */}
+            {stage === 'result' && stats && (
+              <div className="mx-4 mt-4 mb-2 rounded-xl shadow-sm flex-shrink-0 overflow-hidden" style={{ backgroundColor: '#E8F0F8', border: '1px solid #007ACC' }}>
+                {/* Header - always visible */}
+                <div 
+                  className="p-4 flex items-center justify-between gap-4 cursor-pointer select-none"
+                  onClick={() => setIsSummaryExpanded(!isSummaryExpanded)}
+                >
+                  <div className="flex items-center gap-3">
                     <div className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center" style={{ backgroundColor: '#007ACC' }}>
                       <span className="text-lg text-white">✓</span>
                     </div>
-                    <div>
-                      <h3 className="font-semibold mb-1" style={{ color: '#005B9C' }}>
+                    <div className="flex items-center gap-3">
+                      <h3 className="font-semibold" style={{ color: '#005B9C' }}>
                         Main changes detected in new version
                       </h3>
-                      <div className="text-sm text-gray-600 space-y-2">
-                        {changeSet.summary.totalChanges > 0 ? (
-                          <>
-                            {/* AI Summary or loading */}
-                            {summaryLoading ? (
-                              <p className="flex items-center gap-2">
-                                <span className="inline-block w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-                                <span className="text-gray-500">Analyzing changes...</span>
-                              </p>
-                            ) : aiSummary && aiSummary.length > 0 ? (
-                              <ul className="space-y-1.5">
-                                {aiSummary.map((bullet, i) => (
-                                  <li key={i} className="flex items-start gap-2">
-                                    <span 
-                                      className="inline-block w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
-                                      style={{ backgroundColor: getBulletColor(bullet.type) }}
-                                    />
-                                    <span>{bullet.text}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <p>
-                                Found <span className="font-medium" style={{ color: '#007ACC' }}>{changeSet.summary.totalChanges} change{changeSet.summary.totalChanges !== 1 ? 's' : ''}</span>
-                                {changeSet.summary.insertions > 0 && (
-                                  <span className="text-green-600"> • {changeSet.summary.insertions} insertion{changeSet.summary.insertions !== 1 ? 's' : ''}</span>
-                                )}
-                                {changeSet.summary.deletions > 0 && (
-                                  <span className="text-red-600"> • {changeSet.summary.deletions} deletion{changeSet.summary.deletions !== 1 ? 's' : ''}</span>
-                                )}
-                                {changeSet.summary.formatChanges > 0 && (
-                                  <span className="text-amber-600"> • {changeSet.summary.formatChanges} format change{changeSet.summary.formatChanges !== 1 ? 's' : ''}</span>
-                                )}
-                              </p>
-                            )}
-                            <p className="text-xs text-gray-500 mt-1">
-                              Use the track change bubbles in the document to accept or reject each change.
-                            </p>
-                          </>
-                        ) : (
-                          <p>No changes detected between the two versions.</p>
-                        )}
-                      </div>
+                      {/* Show change count badge when collapsed */}
+                      {!isSummaryExpanded && stats.totalChanges > 0 && (
+                        <span className="text-xs px-2 py-0.5 rounded-full text-white" style={{ backgroundColor: '#007ACC' }}>
+                          {stats.totalChanges} change{stats.totalChanges !== 1 ? 's' : ''}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <button
-                    onClick={() => setShowChangeSummary(false)}
-                    className="flex-shrink-0 p-1.5 rounded-lg transition-opacity hover:opacity-70 cursor-pointer"
+                    className="flex-shrink-0 p-1.5 rounded-lg transition-all hover:opacity-70 cursor-pointer"
                     style={{ backgroundColor: '#007ACC' }}
-                    title="Dismiss"
+                    title={isSummaryExpanded ? 'Collapse' : 'Expand'}
                   >
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                    <svg 
+                      className="w-4 h-4 text-white transition-transform duration-300"
+                      style={{ transform: isSummaryExpanded ? 'rotate(0deg)' : 'rotate(180deg)' }}
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 15l7-7 7 7" />
                     </svg>
                   </button>
+                </div>
+
+                {/* Collapsible content */}
+                <div 
+                  className="overflow-hidden transition-all duration-300 ease-in-out"
+                  style={{ 
+                    maxHeight: isSummaryExpanded ? '500px' : '0',
+                    opacity: isSummaryExpanded ? 1 : 0,
+                  }}
+                >
+                  <div className="px-4 pb-4 pl-[4.25rem] text-sm text-gray-600 space-y-2">
+                    {stats.totalChanges > 0 ? (
+                      <>
+                        {/* AI Summary or loading */}
+                        {summaryLoading ? (
+                          <p className="flex items-center gap-2">
+                            <span className="inline-block w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                            <span className="text-gray-500">Analyzing changes...</span>
+                          </p>
+                        ) : aiSummary && aiSummary.length > 0 ? (
+                          <ul className="space-y-1.5">
+                            {aiSummary.map((bullet, i) => (
+                              <li key={i} className="flex items-start gap-2">
+                                <span 
+                                  className="inline-block w-2 h-2 rounded-full mt-1.5 flex-shrink-0"
+                                  style={{ backgroundColor: getBulletColor(bullet.type) }}
+                                />
+                                <span>{bullet.text}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p>
+                            Found <span className="font-medium" style={{ color: '#007ACC' }}>{stats.totalChanges} change{stats.totalChanges !== 1 ? 's' : ''}</span>
+                            {stats.insertions > 0 && (
+                              <span className="text-green-600"> • {stats.insertions} insertion{stats.insertions !== 1 ? 's' : ''}</span>
+                            )}
+                            {stats.deletions > 0 && (
+                              <span className="text-red-600"> • {stats.deletions} deletion{stats.deletions !== 1 ? 's' : ''}</span>
+                            )}
+                            {stats.formatChanges > 0 && (
+                              <span className="text-amber-600"> • {stats.formatChanges} format change{stats.formatChanges !== 1 ? 's' : ''}</span>
+                            )}
+                            {stats.structuralChanges > 0 && (
+                              <span className="text-purple-600"> • {stats.structuralChanges} structural change{stats.structuralChanges !== 1 ? 's' : ''}</span>
+                            )}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-1">
+                          Use the track change bubbles in the document to accept or reject each change.
+                        </p>
+                      </>
+                    ) : (
+                      <p>No changes detected between the two versions.</p>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Document viewer with merged content */}
+            {/* Document viewer */}
             <div className="flex-1 flex flex-col min-h-0 mx-4 mb-4">
-              <SuperDocViewer
-                key={`merged-${v1File.name}`}
-                file={v1File}
-                content={comparison.mergedJson}
-                onSuperdocReady={handleSuperdocReady}
-                showRulers
-                reviewMode
+              <DocxViewer
+                ref={viewerRef}
+                onReady={handleEditorReady}
+                showRulers={stage === 'result'}
                 className="flex-1 min-h-0 rounded-lg overflow-hidden border border-gray-200 shadow-sm"
               />
             </div>
           </div>
         )}
 
-        {/* Processing overlay */}
-        {isProcessing && (
-          <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
-            <div className="bg-white rounded-xl p-6 shadow-xl flex flex-col items-center">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mb-4" />
-              <p className="text-gray-700 font-medium">
-                {stage === 'comparing' ? 'Comparing documents...' : 'Loading...'}
-              </p>
-            </div>
-          </div>
-        )}
+        {/* DocxDiffEditor handles its own loading states */}
 
         {/* Error toast */}
         {error && (

@@ -4,7 +4,8 @@
  */
 
 import Groq from 'groq-sdk';
-import type { EnrichedChange, SummaryBullet } from '../types/summary.types';
+import type { EnrichedChange } from 'docx-diff-editor';
+import type { SummaryBullet } from '../types/summary.types';
 
 const DEFAULT_MODEL = 'openai/gpt-oss-120b';
 const MAX_RETRIES = 3;
